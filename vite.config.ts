@@ -15,7 +15,7 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('development'),
   },
   server: {
-    port: 3000,
+    port: 3002,
     proxy: {
       '/api': 'http://localhost:3001',
       '/on_search': 'http://localhost:3001',
