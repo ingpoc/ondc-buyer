@@ -124,10 +124,15 @@ export function CheckoutPage() {
       }
 
       const data = await response.json();
-      setQuote(data.quote);
 
-      // TODO: Navigate to order confirmation page when confirm endpoint is available
-      // For now, show success message with quote
+      // If order was created, navigate to order confirmation
+      if (data.order?.id) {
+        navigate(`/orders/${data.order.id}`);
+        return;
+      }
+
+      // Otherwise, show quote for confirmation
+      setQuote(data.quote);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Checkout failed');
     } finally {
