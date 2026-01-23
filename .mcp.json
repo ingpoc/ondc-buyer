@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@1.0.34-canary.5"]
+    },
     "token-efficient": {
       "command": "srt",
       "args": [
@@ -19,6 +23,10 @@
       "env": {
         "VOYAGE_API_KEY": "pa-xq4te3GFOurtIgm4HMuCSZ6H4lG4LvfaH9ZiiOarwjT"
       }
+    },
+    "netlify": {
+      "command": "npx",
+      "args": ["-y", "@netlify/mcp"]
     }
   }
 }

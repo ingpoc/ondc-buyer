@@ -3,6 +3,8 @@ import { DRAMS, NAV, SPACING, TYPOGRAPHY, TRANSITIONS } from '@drams-design/comp
 import { RollingSearch } from '@drams-design/components';
 import { useAuth } from './hooks';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { SearchPage } from './pages/SearchPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
@@ -83,7 +85,7 @@ const NAV_STYLES = `
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated, login, logout } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const isActivePath = (path: string): boolean => {
     if (path === '/') return location.pathname === '/';
@@ -120,9 +122,9 @@ export function App() {
               ))}
               <RollingSearch onSearch={handleSearch} />
 
-              {/* Auth section */}
-              {isAuthenticated && user ? (
-                <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
+              {/* Auth section with wallet connection */}
+              <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
+                {isAuthenticated && user ? (
                   <Link
                     to="/orders"
                     className={NAV_LINK_CLASS}
@@ -130,36 +132,15 @@ export function App() {
                   >
                     {user.wallet_address.slice(0, 6)}...
                   </Link>
-                  <button
-                    onClick={() => logout()}
-                    style={{
-                      ...TYPOGRAPHY.bodySmall,
-                      padding: `${SPACING.xs} ${SPACING.md}`,
-                      borderRadius: '48px',
-                      border: 'none',
-                      backgroundColor: DRAMS.grayTrack,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Logout
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => login()}
+                ) : null}
+                <WalletMultiButton
                   style={{
-                    ...TYPOGRAPHY.bodySmall,
-                    padding: `${SPACING.xs} ${SPACING.md}`,
+                    backgroundColor: isAuthenticated ? DRAMS.grayTrack : DRAMS.orange,
                     borderRadius: '48px',
-                    border: 'none',
-                    backgroundColor: DRAMS.orange,
-                    color: 'white',
-                    cursor: 'pointer',
+                    ...TYPOGRAPHY.bodySmall,
                   }}
-                >
-                  Login
-                </button>
-              )}
+                />
+              </div>
             </nav>
           </div>
         </header>
