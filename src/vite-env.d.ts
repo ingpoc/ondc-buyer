@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  // SSO/Identity Provider
+  readonly VITE_IDENTITY_URL: string
+
   // Backend API
   readonly VITE_API_BASE_URL: string
 
