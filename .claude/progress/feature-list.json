@@ -118,7 +118,7 @@
       "description": "API service layer - ONDC protocol integration",
       "priority": "mvp",
       "tier": "mvp",
-      "status": "pending",
+      "status": "implemented",
       "acceptance": [
         "Search API service",
         "Cart API service",
@@ -132,7 +132,7 @@
       "description": "Testing infrastructure - Vitest setup, test utilities",
       "priority": "mvp",
       "tier": "mvp",
-      "status": "pending",
+      "status": "implemented",
       "acceptance": [
         "Vitest configured",
         "Test setup file (setup.ts)",
