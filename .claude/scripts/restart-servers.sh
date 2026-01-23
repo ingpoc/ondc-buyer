@@ -5,7 +5,7 @@
 
 set -e
 
-FRONTEND_PORT=3000
+FRONTEND_PORT=3002
 
 echo "=== Restarting Vite Dev Server ==="
 
