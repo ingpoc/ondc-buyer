@@ -17,6 +17,8 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 
 const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL || 'https://aadharcha.in';
+// Login page URL (frontend) - separate from API gateway
+const IDENTITY_WEB_URL = import.meta.env.VITE_IDENTITY_WEB_URL || IDENTITY_URL;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 // Current authenticated user's wallet address
@@ -207,7 +209,8 @@ export function isAuthenticated(): boolean {
  */
 export function redirectToLogin(returnPath: string = window.location.pathname): void {
   const returnUrl = encodeURIComponent(`${window.location.origin}${returnPath}`);
-  window.location.href = `${IDENTITY_URL}/login?return=${returnUrl}`;
+  // Use IDENTITY_WEB_URL for login page (frontend), not gateway
+  window.location.href = `${IDENTITY_WEB_URL}/login?return=${returnUrl}`;
 }
 
 /**
