@@ -2,7 +2,6 @@ import { Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-r
 import { DRAMS, NAV, SPACING, TYPOGRAPHY, TRANSITIONS } from '@drams-design/components';
 import { RollingSearch } from '@drams-design/components';
 import { useAuth } from './hooks';
-import { ProtectedRoute } from './components/ProtectedRoute';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { SearchPage } from './pages/SearchPage';
@@ -13,7 +12,6 @@ import { CartPage } from './pages/CartPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
-import { LoginPage } from './pages/LoginPage';
 
 // DRAMS: Clean white background, minimal chrome
 const APP_CONTAINER_STYLE = {
@@ -85,7 +83,7 @@ const NAV_STYLES = `
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
 
   const isActivePath = (path: string): boolean => {
     if (path === '/') return location.pathname === '/';
@@ -123,24 +121,13 @@ export function App() {
               <RollingSearch onSearch={handleSearch} />
 
               {/* Auth section with wallet connection */}
-              <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
-                {isAuthenticated && user ? (
-                  <Link
-                    to="/orders"
-                    className={NAV_LINK_CLASS}
-                    style={{ ...TYPOGRAPHY.bodySmall, color: DRAMS.textLight }}
-                  >
-                    {user.wallet_address.slice(0, 6)}...
-                  </Link>
-                ) : null}
-                <WalletMultiButton
-                  style={{
-                    backgroundColor: isAuthenticated ? DRAMS.grayTrack : DRAMS.orange,
-                    borderRadius: '48px',
-                    ...TYPOGRAPHY.bodySmall,
-                  }}
-                />
-              </div>
+              <WalletMultiButton
+                style={{
+                  backgroundColor: DRAMS.orange,
+                  borderRadius: '48px',
+                  ...TYPOGRAPHY.bodySmall,
+                }}
+              />
             </nav>
           </div>
         </header>
@@ -151,33 +138,11 @@ export function App() {
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/product/:id" element={<ProductDetailPage />} />
             <Route path="/agent" element={<AgentChatPage />} />
-            {/* Protected routes - require authentication */}
-            <Route path="/cart" element={
-              <ProtectedRoute>
-                <CartPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/checkout" element={
-              <ProtectedRoute>
-                <CheckoutPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/orders" element={
-              <ProtectedRoute>
-                <OrdersPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/orders/:id" element={
-              <ProtectedRoute>
-                <OrderDetailPage />
-              </ProtectedRoute>
-            } />
-            {/* Login page - redirect if already authenticated */}
-            <Route path="/login" element={
-              <ProtectedRoute requireAuth={false}>
-                <LoginPage />
-              </ProtectedRoute>
-            } />
+            {/* Public routes - wallet-based auth handled in components */}
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
