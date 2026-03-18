@@ -1122,7 +1122,7 @@ export function RollingSearch({
 }
 
 export interface AgentChatMessage {
-  type: 'user' | 'assistant' | 'result';
+  type: string;
   subtype?: string;
   content?: string;
   timestamp?: number;
@@ -1154,6 +1154,91 @@ function getSharedSessionId(endpoint: string) {
   const generated = `session-${Math.random().toString(36).slice(2, 10)}`;
   window.localStorage.setItem(storageKey, generated);
   return generated;
+}
+
+function normalizeStreamMessage(message: AgentChatMessage): AgentChatMessage | null {
+  if (message.type === 'assistant_delta') {
+    return {
+      type: 'assistant',
+      subtype: 'stream',
+      content: message.content,
+      timestamp: message.timestamp,
+    };
+  }
+
+  if (message.type === 'result' && message.content) {
+    return {
+      type: 'assistant',
+      subtype: 'final',
+      content: message.content,
+      timestamp: message.timestamp,
+    };
+  }
+
+  if (message.type === 'error') {
+    return {
+      type: 'result',
+      subtype: 'error_during_execution',
+      error: message.error,
+      timestamp: message.timestamp,
+    };
+  }
+
+  if (message.type === 'init' || message.type === 'usage') {
+    return null;
+  }
+
+  return message;
+}
+
+function appendAgentMessage(current: AgentChatMessage[], next: AgentChatMessage) {
+  const normalized = normalizeStreamMessage(next);
+  if (!normalized) {
+    return current;
+  }
+
+  const last = current[current.length - 1];
+
+  if (normalized.type === 'assistant' && normalized.subtype === 'stream') {
+    if (last?.type === 'assistant' && (last.subtype === 'stream' || last.subtype === 'final')) {
+      return [
+        ...current.slice(0, -1),
+        {
+          ...last,
+          subtype: 'stream',
+          content: `${last.content ?? ''}${normalized.content ?? ''}`,
+          timestamp: normalized.timestamp ?? last.timestamp,
+        },
+      ];
+    }
+  }
+
+  if (normalized.type === 'assistant' && normalized.subtype === 'final') {
+    if (last?.type === 'assistant' && (last.subtype === 'stream' || last.subtype === 'final')) {
+      if ((last.content ?? '') === (normalized.content ?? '')) {
+        return [
+          ...current.slice(0, -1),
+          {
+            ...last,
+            subtype: 'final',
+            timestamp: normalized.timestamp ?? last.timestamp,
+          },
+        ];
+      }
+
+      return [
+        ...current.slice(0, -1),
+        {
+          ...last,
+          subtype: 'final',
+          content: normalized.content ?? last.content,
+          timestamp: normalized.timestamp ?? last.timestamp,
+        },
+      ];
+    }
+  }
+
+  return [...current, normalized];
 }
 
 async function processStream(
@@ -1252,8 +1337,11 @@ export function AgentChat({
       await processStream(
         reader,
         (message) => {
-          setMessages((current) => [...current, message]);
-          onMessage?.(message);
+          setMessages((current) => appendAgentMessage(current, message));
+          const normalized = normalizeStreamMessage(message);
+          if (normalized) {
+            onMessage?.(normalized);
+          }
         },
         () => setIsLoading(false),
         (errorMessage) => {

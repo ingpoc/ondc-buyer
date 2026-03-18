@@ -8,9 +8,9 @@ import { PaymentSelector } from '../components/PaymentSelector';
 import { QuoteDisplay } from '../components/QuoteDisplay';
 import { TrustNotice } from '../components/TrustStatus';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { createLocalQuote } from '../lib/localCart';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+import { createDemoOrder } from '../lib/localOrders';
 
 const ERROR_ALERT_STYLE = {
   ...BADGE.error,
@@ -119,7 +119,22 @@ export function CheckoutPage() {
         throw new Error('No session found');
       }
 
-      const response = await fetch(`${API_BASE}/api/checkout`, {
+      if (COMMERCE_DEMO_MODE) {
+        if (!session) {
+          throw new Error('No session found');
+        }
+        if (quote) {
+          const order = createDemoOrder(sessionId, session, quote, deliveryAddress);
+          navigate(`/orders/${order.id}`);
+          return;
+        }
+
+        setQuote(createLocalQuote(session, deliveryAddress));
+        setSubmitError('Live checkout service is unavailable. Review the local demo quote, then place the order to complete checkout.');
+        return;
+      }
+
+      const response = await fetch(buildCommerceUrl('/api/checkout'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -310,10 +325,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
 
       <div>
         <div style={FORM_GROUP_STYLE}>
-          <label style={LABEL_STYLE}>
+          <label htmlFor="delivery-line1" style={LABEL_STYLE}>
             Street Address *
           </label>
           <DramsInput
+            id="delivery-line1"
+            name="deliveryLine1"
             type="text"
             required
             value={address.line1}
@@ -324,10 +341,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
 
         <div style={INPUT_GRID_STYLE}>
           <div style={FORM_GROUP_STYLE}>
-            <label style={LABEL_STYLE}>
+            <label htmlFor="delivery-city" style={LABEL_STYLE}>
               City *
             </label>
             <DramsInput
+              id="delivery-city"
+              name="deliveryCity"
               type="text"
               required
               value={address.city}
@@ -337,10 +356,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
           </div>
 
           <div style={FORM_GROUP_STYLE}>
-            <label style={LABEL_STYLE}>
+            <label htmlFor="delivery-state" style={LABEL_STYLE}>
               State *
             </label>
             <DramsInput
+              id="delivery-state"
+              name="deliveryState"
               type="text"
               required
               value={address.state}
@@ -351,10 +372,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
         </div>
 
         <div style={FORM_GROUP_STYLE}>
-          <label style={LABEL_STYLE}>
+          <label htmlFor="delivery-postal-code" style={LABEL_STYLE}>
             Postal Code *
           </label>
           <DramsInput
+            id="delivery-postal-code"
+            name="deliveryPostalCode"
             type="text"
             required
             value={address.postalCode}

@@ -4,6 +4,8 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { resolveMockBuyerEndpoint } from '../lib/mockSearch';
 import type { BecknItem } from '../types';
 
 /** Stream event types */
@@ -63,7 +65,6 @@ export interface SearchStreamParams {
   preferences?: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const STREAM_TIMEOUT = 3000;
 
 /**
@@ -131,7 +132,19 @@ export function useSearchStream(): SearchStreamResult {
     if (params.location) queryParams.set('location', params.location);
     if (params.preferences) queryParams.set('preferences', params.preferences);
 
-    const url = `${API_BASE}/api/search/stream?${queryParams.toString()}`;
+    if (COMMERCE_DEMO_MODE) {
+      const mockResult = resolveMockBuyerEndpoint(`/api/search?${queryParams.toString()}`) as ResultsEventData | null;
+      setState({
+        status: 'complete',
+        items: mockResult?.items ?? [],
+        hasMore: false,
+        error: null,
+        isStreaming: false,
+      });
+      return;
+    }
+
+    const url = buildCommerceUrl(`/api/search/stream?${queryParams.toString()}`);
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 

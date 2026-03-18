@@ -132,7 +132,10 @@ export function addLocalItem(sessionId: string, item: BecknItem, quantity: numbe
     });
   }
 
-  return saveLocalSession(session);
+  return saveLocalSession({
+    ...session,
+    status: 'active',
+  });
 }
 
 export function removeLocalItem(sessionId: string, itemId: string): UCPSession {
@@ -147,6 +150,7 @@ export function updateLocalQuantity(sessionId: string, itemId: string, quantity:
   const session = getLocalSession(sessionId);
   return saveLocalSession({
     ...session,
+    status: 'active',
     items: session.items
       .map((entry) => (
         entry.item.id === itemId
@@ -224,4 +228,13 @@ export function createLocalQuote(session: UCPSession, deliveryAddress: UCPAddres
     ],
     ttl: 'PT15M',
   };
+}
+
+export function clearLocalSession(sessionId: string): UCPSession {
+  const session = getLocalSession(sessionId);
+  return saveLocalSession({
+    ...session,
+    status: 'active',
+    items: [],
+  });
 }

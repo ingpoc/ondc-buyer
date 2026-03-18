@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useId } from 'react';
 import { COLORS, SPACING, TYPOGRAPHY, BUTTON, CARD, BADGE, DRAMS, DramsInput } from '@portfolio-ui';
+import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { updateLocalBuyer } from '../lib/localCart';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const STORAGE_KEY = 'ondc-session-id';
 
 const FORM_CONTAINER_STYLE = {
@@ -28,6 +28,8 @@ export interface BillingFormProps {
 }
 
 interface FormFieldProps {
+  id: string;
+  name: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -41,6 +43,8 @@ interface FormFieldProps {
 }
 
 function FormField({
+  id,
+  name,
   label,
   value,
   onChange,
@@ -54,10 +58,12 @@ function FormField({
 }: FormFieldProps): React.ReactElement {
   return (
     <div style={style}>
-      <label style={LABEL_STYLE}>
+      <label htmlFor={id} style={LABEL_STYLE}>
         {label} {required && '*'}
       </label>
       <DramsInput
+        id={id}
+        name={name}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -72,6 +78,7 @@ function FormField({
 }
 
 export function BillingForm({ session, onSave }: BillingFormProps): React.ReactElement {
+  const fieldPrefix = useId();
   const [name, setName] = useState(session?.buyer?.name || '');
   const [email, setEmail] = useState(session?.buyer?.email || '');
   const [phone, setPhone] = useState(session?.buyer?.phone || '');
@@ -99,7 +106,15 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
         throw new Error('No session found');
       }
 
-      const response = await fetch(`${API_BASE}/api/cart/buyer`, {
+      if (COMMERCE_DEMO_MODE) {
+        updateLocalBuyer(sessionId, { name, email, phone, taxId });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+        await onSave?.();
+        return;
+      }
+
+      const response = await fetch(buildCommerceUrl('/api/cart/buyer'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, name, email, phone, taxId }),
@@ -169,6 +184,8 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
 
       <div style={{ display: 'grid', gap: SPACING.lg }}>
         <FormField
+          id={`${fieldPrefix}-full-name`}
+          name="buyerName"
           label="Full Name"
           value={name}
           onChange={setName}
@@ -179,6 +196,8 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.lg }}>
           <FormField
+            id={`${fieldPrefix}-email`}
+            name="buyerEmail"
             label="Email"
             value={email}
             onChange={setEmail}
@@ -188,6 +207,8 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
             required
           />
           <FormField
+            id={`${fieldPrefix}-phone`}
+            name="buyerPhone"
             label="Phone"
             value={phone}
             onChange={setPhone}
@@ -199,6 +220,8 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
         </div>
 
         <FormField
+          id={`${fieldPrefix}-tax-id`}
+          name="buyerTaxId"
           label="GSTIN (Optional)"
           value={taxId}
           onChange={(value) => setTaxId(value.toUpperCase())}

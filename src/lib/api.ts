@@ -15,11 +15,12 @@
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
+import { COMMERCE_API_BASE } from './commerceConfig';
+import { normalizeLoopbackUrl } from './loopback';
 
-const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL || 'https://aadharcha.in';
+const IDENTITY_URL = normalizeLoopbackUrl(import.meta.env.VITE_IDENTITY_URL || 'https://aadharcha.in');
 // Login page URL (frontend) - separate from API gateway
-const IDENTITY_WEB_URL = import.meta.env.VITE_IDENTITY_WEB_URL || IDENTITY_URL;
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const IDENTITY_WEB_URL = normalizeLoopbackUrl(import.meta.env.VITE_IDENTITY_WEB_URL || IDENTITY_URL);
 
 // Current authenticated user's wallet address
 let currentWalletAddress: string | null = null;
@@ -70,7 +71,7 @@ export const identityClient: AxiosInstance = axios.create({
  * Create configured Axios instance for backend API
  */
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE,
+  baseURL: COMMERCE_API_BASE || undefined,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -228,4 +229,4 @@ export async function recordAppAccess(appName: string): Promise<void> {
 }
 
 // Export base URLs
-export { API_BASE, IDENTITY_URL };
+export { COMMERCE_API_BASE as API_BASE, IDENTITY_URL };
