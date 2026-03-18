@@ -1,6 +1,6 @@
 import type { PortfolioTrustState } from '@/lib/trust';
 
-export type SubscriptionStatus = 'inactive' | 'trial' | 'active' | 'past_due' | 'canceled';
+export type AgentAuthMode = 'api_key' | 'local_cli' | 'bedrock' | 'vertex' | 'azure' | 'unavailable';
 
 export interface UsageSnapshot {
   requests_used: number;
@@ -10,12 +10,15 @@ export interface UsageSnapshot {
   estimated_cost_usd: number;
 }
 
-export interface EntitlementSnapshot {
+export interface AgentRuntimeSnapshot {
   app_id: 'ondc-buyer';
-  subscription_status: SubscriptionStatus;
-  plan_tier: string;
+  auth_mode: AgentAuthMode;
+  model: string;
+  runtime_available: boolean;
   agent_access: boolean;
+  trust_state: PortfolioTrustState;
   trust_required_for_write: boolean;
+  mode: 'blocked' | 'read_only' | 'full';
   usage: UsageSnapshot;
   allowed_capabilities: string[];
   blocked_reason: string | null;

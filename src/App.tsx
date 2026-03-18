@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
-import { AppShell, RollingSearch, type NavItem } from '@portfolio-ui';
-import { useAgentEntitlement, useTrustState } from './hooks';
+import { AppShell, Badge, RollingSearch, type NavItem } from '@portfolio-ui';
+import { useAgentRuntime, useTrustState } from './hooks';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { SearchPage } from './pages/SearchPage';
@@ -14,7 +14,6 @@ import { OrdersPage } from './pages/OrdersPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { TrustStatusChip } from './components/TrustStatus';
-import { SubscriptionStatusChip } from './components/SubscriptionStatusChip';
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/search', label: 'Search' },
@@ -62,7 +61,7 @@ export function App() {
   const walletAddress = publicKey?.toBase58() ?? null;
   const subjectId = user?.wallet_address ?? walletAddress;
   const trust = useTrustState(walletAddress);
-  const entitlement = useAgentEntitlement(subjectId, walletAddress);
+  const runtime = useAgentRuntime(subjectId, walletAddress);
 
   const handleSearch = (query: string) => {
     navigate(`/results?category=grocery&q=${encodeURIComponent(query)}`);
@@ -92,7 +91,9 @@ export function App() {
       actions={
         <Fragment>
           {subjectId ? (
-            <SubscriptionStatusChip status={entitlement.subscription_status} loading={entitlement.loading} />
+            <Badge tone={runtime.runtime_available ? 'success' : 'warning'}>
+              {runtime.loading ? 'Runtime loading' : `Runtime ${runtime.auth_mode}`}
+            </Badge>
           ) : null}
           {walletAddress ? (
             <TrustStatusChip state={trust.state} loading={trust.loading} />
