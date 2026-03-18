@@ -3,9 +3,12 @@
 interface ImportMetaEnv {
   // SSO/Identity Provider
   readonly VITE_IDENTITY_URL: string
+  readonly VITE_IDENTITY_WEB_URL: string
+  readonly VITE_TRUST_API_URL: string
 
   // Backend API
   readonly VITE_API_BASE_URL: string
+  readonly VITE_COMMERCE_DEMO_MODE?: string
 
   // ONDC Staging Environment
   readonly VITE_ONDC_REGISTRY_URL: string

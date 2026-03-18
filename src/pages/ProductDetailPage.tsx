@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi, useCart } from '../hooks';
 import { RatingStars } from '../components';
-import { PageLayout, DRAMS, SPACING, TYPOGRAPHY, BUTTON, CARD, TRANSITIONS, COLORS, GRID, DramsFlipCard, FlipCardFront, FlipCardBack, DramsAddButton } from '@drams-design/components';
+import { PageLayout, DRAMS, SPACING, TYPOGRAPHY, BUTTON, CARD, COLORS, GRID, DramsFlipCard, FlipCardFront, FlipCardBack, DramsAddButton } from '@portfolio-ui';
 import type { UCPItem } from '../types';
 
 const BACK_BUTTON_STYLE = {
@@ -197,7 +197,7 @@ export function ProductDetailPage(): JSX.Element {
             </span>
             {data.rating && (
               <div style={RATING_STYLE}>
-                <RatingStars rating={data.rating.value} />
+                <RatingStars rating={data.rating.value ?? 0} />
               </div>
             )}
           </div>

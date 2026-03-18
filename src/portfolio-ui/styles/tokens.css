@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --ui-bg: #f6f4ef;
+  --ui-bg-elevated: #ffffff;
+  --ui-bg-subtle: #ede8df;
+  --ui-bg-strong: #101010;
+  --ui-border: rgba(16, 16, 16, 0.08);
+  --ui-border-strong: rgba(16, 16, 16, 0.14);
+  --ui-text: #18181b;
+  --ui-text-secondary: #5f5b53;
+  --ui-text-muted: #837b6f;
+  --ui-primary: #ea6a2a;
+  --ui-primary-strong: #c8521d;
+  --ui-primary-soft: rgba(234, 106, 42, 0.12);
+  --ui-success: #13795b;
+  --ui-warning: #b45309;
+  --ui-error: #c2410c;
+  --ui-info: #1d4ed8;
+  --ui-shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.06);
+  --ui-shadow-md: 0 18px 45px rgba(15, 23, 42, 0.12);
+  --ui-shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.18);
+  --ui-radius-sm: 0.75rem;
+  --ui-radius-md: 1rem;
+  --ui-radius-lg: 1.5rem;
+  --ui-radius-pill: 999px;
+  --ui-ring: rgba(234, 106, 42, 0.35);
+  --ui-font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --ui-font-display: 'Instrument Serif', Georgia, serif;
+}
+
+html {
+  font-family: var(--ui-font-sans);
+  color: var(--ui-text);
+  background: var(--ui-bg);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(234, 106, 42, 0.08), transparent 28%),
+    linear-gradient(180deg, #faf8f3 0%, #f6f4ef 42%, #f4f1ea 100%);
+  color: var(--ui-text);
+}
+
+* {
+  border-color: var(--ui-border);
+}
+
+*::selection {
+  background: rgba(234, 106, 42, 0.18);
+}
+
+.font-display {
+  font-family: var(--ui-font-display);
+}
+
+.surface-card {
+  background: color-mix(in srgb, var(--ui-bg-elevated) 94%, transparent);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.surface-card-strong {
+  background: var(--ui-bg-elevated);
+  border: 1px solid var(--ui-border-strong);
+  box-shadow: var(--ui-shadow-md);
+}
+
+.premium-shell {
+  position: relative;
+}
+
+.premium-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at right top, rgba(16, 16, 16, 0.04), transparent 22%),
+    radial-gradient(circle at left 20%, rgba(234, 106, 42, 0.05), transparent 20%);
+  z-index: -1;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

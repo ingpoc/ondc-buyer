@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../hooks';
 import { CartItem, CartSummary } from '../components/CartComponents';
-import { PageLayout, PageHeader, DRAMS, SPACING, TYPOGRAPHY, BUTTON, CARD, PILL_BUTTON, GRID } from '@drams-design/components';
+import { PageLayout, PageHeader, DRAMS, SPACING, TYPOGRAPHY, BUTTON, CARD, PILL_BUTTON, GRID } from '@portfolio-ui';
 
 const GRID_LAYOUT_STYLE = {
   ...GRID.twoColumnsWide,

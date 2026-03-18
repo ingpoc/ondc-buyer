@@ -1,13 +1,16 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCart } from '../hooks';
+import { useCart, useTrustState } from '../hooks';
 import type { UCPQuote, UCPAddress } from '../types';
-import { PageLayout, PageHeader, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, BADGE, CARD, PILL_BUTTON, GRID, DramsInput } from '@drams-design/components';
+import { PageLayout, PageHeader, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, BADGE, CARD, PILL_BUTTON, GRID, DramsInput } from '@portfolio-ui';
 import { BillingForm } from '../components/BillingForm';
 import { PaymentSelector } from '../components/PaymentSelector';
 import { QuoteDisplay } from '../components/QuoteDisplay';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+import { TrustNotice } from '../components/TrustStatus';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { createLocalQuote } from '../lib/localCart';
+import { createDemoOrder } from '../lib/localOrders';
 
 const ERROR_ALERT_STYLE = {
   ...BADGE.error,
@@ -77,7 +80,9 @@ const FOOTER_STYLE = {
 
 export function CheckoutPage() {
   const navigate = useNavigate();
-  const { session, loading, error, itemCount, clearError, refreshCart } = useCart();
+  const { publicKey } = useWallet();
+  const { session, loading, error, itemCount, refreshCart } = useCart();
+  const trust = useTrustState(publicKey?.toBase58() ?? null);
   const [quote, setQuote] = useState<UCPQuote | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -89,6 +94,8 @@ export function CheckoutPage() {
     country: 'IND',
   });
 
+  const trustBlocksCheckout = !trust.loading && trust.state !== 'verified';
+
   // Redirect to cart if empty (only after we've loaded the session)
   useEffect(() => {
     // Check session is not null to ensure we've actually loaded the cart
@@ -99,6 +106,10 @@ export function CheckoutPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (trustBlocksCheckout) {
+      setSubmitError(trust.reason || 'Complete AadhaarChain verification before continuing.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
 
@@ -108,7 +119,22 @@ export function CheckoutPage() {
         throw new Error('No session found');
       }
 
-      const response = await fetch(`${API_BASE}/api/checkout`, {
+      if (COMMERCE_DEMO_MODE) {
+        if (!session) {
+          throw new Error('No session found');
+        }
+        if (quote) {
+          const order = createDemoOrder(sessionId, session, quote, deliveryAddress);
+          navigate(`/orders/${order.id}`);
+          return;
+        }
+
+        setQuote(createLocalQuote(session, deliveryAddress));
+        setSubmitError('Live checkout service is unavailable. Review the local demo quote, then place the order to complete checkout.');
+        return;
+      }
+
+      const response = await fetch(buildCommerceUrl('/api/checkout'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,7 +160,12 @@ export function CheckoutPage() {
       // Otherwise, show quote for confirmation
       setQuote(data.quote);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Checkout failed');
+      if (session) {
+        setQuote(createLocalQuote(session, deliveryAddress));
+        setSubmitError('Live checkout service is unavailable. Showing a local demo quote instead.');
+      } else {
+        setSubmitError(err instanceof Error ? err.message : 'Checkout failed');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -173,6 +204,14 @@ export function CheckoutPage() {
     <PageLayout>
       <PageHeader title="Checkout" />
 
+      <TrustNotice
+        state={trust.state}
+        loading={trust.loading}
+        error={trust.error}
+        reason={trust.reason}
+        actionLabel="Resolve trust in AadhaarChain"
+      />
+
       {submitError && (
         <div style={ERROR_ALERT_STYLE}>
           {submitError}
@@ -205,15 +244,35 @@ export function CheckoutPage() {
 
             <button
               type="submit"
-              disabled={submitting || !session?.buyer?.name || !session?.buyer?.contact?.email}
-              style={submitting ? BUTTON_DISABLED_STYLE : BUTTON_PRIMARY_STYLE}
+              disabled={
+                submitting ||
+                trustBlocksCheckout ||
+                !session?.buyer?.name ||
+                !session?.buyer?.contact?.email
+              }
+              style={
+                submitting ||
+                trustBlocksCheckout ||
+                !session?.buyer?.name ||
+                !session?.buyer?.contact?.email
+                  ? BUTTON_DISABLED_STYLE
+                  : BUTTON_PRIMARY_STYLE
+              }
             >
-              {submitting ? 'Processing...' : quote ? 'Place Order' : 'Get Quote'}
+              {trustBlocksCheckout
+                ? 'Trust verification required'
+                : submitting
+                  ? 'Processing...'
+                  : quote
+                    ? 'Place Order'
+                    : 'Get Quote'}
             </button>
 
-            {(!session?.buyer?.name || !session?.buyer?.contact?.email) && (
+            {(trustBlocksCheckout || !session?.buyer?.name || !session?.buyer?.contact?.email) && (
               <p style={VALIDATION_MESSAGE_STYLE}>
-                Please complete billing information to continue
+                {trustBlocksCheckout
+                  ? trust.reason || 'Complete AadhaarChain verification to continue.'
+                  : 'Please complete billing information to continue'}
               </p>
             )}
           </div>
@@ -266,10 +325,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
 
       <div>
         <div style={FORM_GROUP_STYLE}>
-          <label style={LABEL_STYLE}>
+          <label htmlFor="delivery-line1" style={LABEL_STYLE}>
             Street Address *
           </label>
           <DramsInput
+            id="delivery-line1"
+            name="deliveryLine1"
             type="text"
             required
             value={address.line1}
@@ -280,10 +341,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
 
         <div style={INPUT_GRID_STYLE}>
           <div style={FORM_GROUP_STYLE}>
-            <label style={LABEL_STYLE}>
+            <label htmlFor="delivery-city" style={LABEL_STYLE}>
               City *
             </label>
             <DramsInput
+              id="delivery-city"
+              name="deliveryCity"
               type="text"
               required
               value={address.city}
@@ -293,10 +356,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
           </div>
 
           <div style={FORM_GROUP_STYLE}>
-            <label style={LABEL_STYLE}>
+            <label htmlFor="delivery-state" style={LABEL_STYLE}>
               State *
             </label>
             <DramsInput
+              id="delivery-state"
+              name="deliveryState"
               type="text"
               required
               value={address.state}
@@ -307,10 +372,12 @@ function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
         </div>
 
         <div style={FORM_GROUP_STYLE}>
-          <label style={LABEL_STYLE}>
+          <label htmlFor="delivery-postal-code" style={LABEL_STYLE}>
             Postal Code *
           </label>
           <DramsInput
+            id="delivery-postal-code"
+            name="deliveryPostalCode"
             type="text"
             required
             value={address.postalCode}

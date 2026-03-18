@@ -1,12 +1,5 @@
-import { DramsProductCard, DramsEmptyState, DramsSpinner } from '@drams-design/components';
+import { DramsProductCard, DramsEmptyState, DramsSpinner } from '@portfolio-ui';
 import type { UCPItem } from '../types';
-import { SPACING } from '@drams-design/components';
-
-const GRID_STYLE = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-  gap: SPACING.xl,
-};
 
 export interface ResultGridProps {
   items: UCPItem[];
@@ -25,20 +18,21 @@ export function ResultGrid({ items, onItemClick, onAddToCart, loading }: ResultG
       <DramsEmptyState
         icon="🔍"
         title="No results found"
-        message="Try adjusting your search terms or filters to find what you're looking for"
+        message="Try adjusting your search terms or filters to find what you're looking for."
       />
     );
   }
 
   return (
-    <div style={GRID_STYLE}>
+    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
         <DramsProductCard
           key={item.id}
-          name={item.name ?? 'Product'}
+          name={item.name ?? item.descriptor?.name ?? 'Product'}
           category={item.category}
           price={`${item.price?.currency || '₹'} ${item.price?.value ?? item.price?.amount ?? '0'}`}
           image={item.images?.[0]?.url ?? undefined}
+          badge={item.rating?.value ? `${item.rating.value.toFixed(1)}★` : item._provider}
           onClick={() => onItemClick?.(item)}
           onAdd={onAddToCart ? () => onAddToCart(item) : undefined}
         />

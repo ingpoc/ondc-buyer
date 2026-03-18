@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UCPOrder, UCPOrderStatus } from '../types';
-import { PageLayout, PageHeader, DRAMS, SPACING, TYPOGRAPHY, CARD, PILL_BUTTON, RADIUS, TRANSITIONS, BADGE, GRID, DramsTabGroup, DramsEmptyState, type DramsTabOption } from '@drams-design/components';
+import { PageLayout, DRAMS, SPACING, TYPOGRAPHY, CARD, BADGE, GRID, DramsTabGroup, DramsEmptyState, type DramsTabOption } from '@portfolio-ui';
+import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { listDemoOrders } from '../lib/localOrders';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'complete';
 
@@ -18,9 +20,6 @@ const isActiveStatus = (status: UCPOrderStatus): boolean =>
 const isCompleteStatus = (status: UCPOrderStatus): boolean =>
   status === 'delivered';
 
-// Mock orders - to be replaced with API call in SDK-BUYER-ORDERS-003
-const mockOrders: UCPOrder[] = [];
-
 const ORDER_CARD_STYLE = {
   ...CARD.base,
   cursor: 'pointer',
@@ -35,9 +34,10 @@ const ORDER_CARD_HOVER_STYLE = {
 export function OrdersPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<StatusFilter>('all');
+  const orders: UCPOrder[] = COMMERCE_DEMO_MODE ? listDemoOrders() : [];
 
   // Filter orders based on selected status
-  const filteredOrders = mockOrders.filter((order) => {
+  const filteredOrders = orders.filter((order) => {
     if (filter === 'all') return true;
     if (filter === 'pending') return isPendingStatus(order.status);
     if (filter === 'active') return isActiveStatus(order.status);
@@ -76,8 +76,8 @@ export function OrdersPage() {
   const tabOptions: DramsTabOption[] = (['all', 'pending', 'active', 'complete'] as StatusFilter[]).map(
     (filterOption) => {
       const count = filterOption === 'all'
-        ? mockOrders.length
-        : mockOrders.filter((o) => {
+        ? orders.length
+        : orders.filter((o) => {
             if (filterOption === 'pending') return isPendingStatus(o.status);
             if (filterOption === 'active') return isActiveStatus(o.status);
             if (filterOption === 'complete') return isCompleteStatus(o.status);
@@ -97,7 +97,7 @@ export function OrdersPage() {
       <DramsTabGroup
         options={tabOptions}
         value={filter}
-        onChange={(value) => setFilter(value as StatusFilter)}
+        onChange={(value: string) => setFilter(value as StatusFilter)}
         style={{ marginBottom: SPACING['2xl'] }}
       />
 

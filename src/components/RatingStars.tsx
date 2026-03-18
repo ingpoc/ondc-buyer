@@ -1,4 +1,4 @@
-import { DRAMS, SPACING } from '@drams-design/components';
+import { DRAMS, SPACING } from '@portfolio-ui';
 
 export interface RatingStarsProps {
   rating: number;

@@ -1,5 +1,19 @@
 # AGENTS.md
 
+## Instruction Inheritance
+
+- Read `../AGENTS.md` first for portfolio-wide governance.
+- This file adds only `ondc-buyer`-specific execution guidance.
+- If this file conflicts with the root workspace `AGENTS.md`, the root file wins unless it explicitly allows a repo-local exception.
+
+## Browser Testing
+
+- BEFORE browser testing ONDC Buyer -> read `../docs/workflow/browser-testing-control-plane.md`
+- BEFORE validating the same-user portfolio journey -> read `../docs/workflow/portfolio-browser-acceptance-loop.md`
+- Browser testing for this repo should happen after AadhaarChain trust state is confirmed, because buyer trust notices and checkout expectations depend on it.
+- Critical browser routes for this repo: `/search`, `/results`, `/product/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`, `/agent`
+- Distinguish trust-state failures from missing commerce backend failures; do not collapse both into a generic buyer-app failure.
+
 ONDC UCP Buyer Portal - Private buyer webapp
 
 ---

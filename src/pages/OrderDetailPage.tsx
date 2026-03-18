@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { UCPOrder, UCPOrderStatus, UCPFulfillmentStatus } from '../types';
-import { PageLayout, PageHeader, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, CARD, BADGE } from '@drams-design/components';
+import { PageLayout, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, CARD, BADGE } from '@portfolio-ui';
+import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { cancelDemoOrder, getDemoOrder } from '../lib/localOrders';
 
 // Mock order fetch - to be replaced with API call
-const fetchOrder = async (_orderId: string): Promise<UCPOrder | null> => {
+const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
+  if (COMMERCE_DEMO_MODE) {
+    return getDemoOrder(orderId);
+  }
+  void orderId;
   // TODO: Replace with actual API call
   return null;
 };
@@ -40,6 +46,8 @@ const getOrderStatusBadgeVariant = (status: UCPOrderStatus): keyof typeof BADGE 
 const getFulfillmentStatusLabel = (status: UCPFulfillmentStatus): string => {
   const labels: Record<UCPFulfillmentStatus, string> = {
     pending: 'Pending',
+    processing: 'Processing',
+    packed: 'Packed',
     searching_agent: 'Searching for Agent',
     agent_assigned: 'Agent Assigned',
     picking_up: 'Picking Up',
@@ -131,6 +139,15 @@ export function OrderDetailPage() {
 
     setCancelling(true);
     try {
+      if (COMMERCE_DEMO_MODE) {
+        const updatedOrder = cancelDemoOrder(id);
+        if (!updatedOrder) {
+          throw new Error('Order not found');
+        }
+        setOrder(updatedOrder);
+        return;
+      }
+
       // TODO: Replace with actual API call
       // const response = await fetch(`/api/orders/${id}/cancel`, {
       //   method: 'POST',

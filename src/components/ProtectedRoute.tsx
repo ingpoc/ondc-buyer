@@ -20,7 +20,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { DRAMS, SPACING, TYPOGRAPHY } from '@drams-design/components';
+import { DRAMS, SPACING, TYPOGRAPHY } from '@portfolio-ui';
 
 const LOADING_STYLE = {
   display: 'flex',

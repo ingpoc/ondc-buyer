@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { resolveMockBuyerEndpoint } from '../lib/mockSearch';
 
 export interface UseApiResult<T> {
   data: T | null;
@@ -22,7 +22,15 @@ export function useApi<T>(
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      if (COMMERCE_DEMO_MODE) {
+        const mockData = resolveMockBuyerEndpoint(endpoint);
+        if (mockData !== null) {
+          setData(mockData as T);
+          return;
+        }
+      }
+
+      const response = await fetch(buildCommerceUrl(endpoint), {
         headers: {
           'Content-Type': 'application/json',
           ...options?.headers,
@@ -37,6 +45,14 @@ export function useApi<T>(
       const json = await response.json();
       setData(json);
     } catch (err) {
+      if (COMMERCE_DEMO_MODE) {
+        const mockData = resolveMockBuyerEndpoint(endpoint);
+        if (mockData !== null) {
+          setData(mockData as T);
+          setError(null);
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);

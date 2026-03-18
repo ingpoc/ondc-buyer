@@ -1,5 +1,5 @@
-import { SPACING, TYPOGRAPHY, DRAMS } from '@drams-design/components';
-import { DramsDropdown } from '@drams-design/components';
+import { SPACING, TYPOGRAPHY, DRAMS } from '@portfolio-ui';
+import { DramsDropdown } from '@portfolio-ui';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },

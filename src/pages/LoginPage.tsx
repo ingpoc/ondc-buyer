@@ -13,7 +13,7 @@
 
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { PageLayout, DRAMS, SPACING, TYPOGRAPHY, PILL_BUTTON } from '@drams-design/components';
+import { PageLayout, DRAMS, SPACING, TYPOGRAPHY, PILL_BUTTON } from '@portfolio-ui';
 
 const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL || 'https://aadharcha.in';
 

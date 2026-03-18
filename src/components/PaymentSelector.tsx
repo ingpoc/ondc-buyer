@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, CARD, DRAMS, DramsInput, DramsRadioGroup, type DramsRadioOption } from '@drams-design/components';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, CARD, DramsInput, DramsRadioGroup, type DramsRadioOption } from '@portfolio-ui';
 
 export type PaymentMethod = any;
 

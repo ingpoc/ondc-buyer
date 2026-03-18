@@ -6,6 +6,7 @@
   NODE_VERSION = "20"
   VITE_IDENTITY_URL = "https://identity-aadhar-gateway.onrender.com"
   VITE_IDENTITY_WEB_URL = "https://aadharcha.in"
+  VITE_TRUST_API_URL = "https://identity-aadhar-gateway.onrender.com"
 
 # SPA routing - redirect all paths to index.html
 [[redirects]]

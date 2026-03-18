@@ -1,5 +1,5 @@
 import type { UCPQuote } from '../types';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, DRAMS } from '@drams-design/components';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '@portfolio-ui';
 
 const BREAKUP_TITLES: Record<string, string> = {
   item: 'Items',

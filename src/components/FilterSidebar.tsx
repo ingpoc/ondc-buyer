@@ -1,5 +1,4 @@
-import { SPACING, TYPOGRAPHY, DRAMS, CARD } from '@drams-design/components';
-import { DramsInput, DramsDropdown } from '@drams-design/components';
+import { Badge, Button, Card, Input, DramsDropdown } from '@portfolio-ui';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
@@ -7,29 +6,6 @@ const SORT_OPTIONS = [
   { value: 'rating', label: 'Rating' },
   { value: 'distance', label: 'Distance' },
 ] as const;
-
-const CONTAINER_STYLE = {
-  ...CARD.base,
-  padding: SPACING.lg,
-  minWidth: '200px',
-};
-
-const HEADER_STYLE = {
-  ...TYPOGRAPHY.h3,
-  color: DRAMS.textDark,
-  marginBottom: SPACING.md,
-};
-
-const FILTER_SECTION_STYLE = {
-  marginBottom: SPACING.md,
-};
-
-const LABEL_STYLE = {
-  ...TYPOGRAPHY.label,
-  display: 'block',
-  marginBottom: SPACING.xs,
-  color: DRAMS.textDark,
-};
 
 export interface SearchFilters {
   maxPrice?: number;
@@ -43,7 +19,18 @@ export interface FilterSidebarProps {
   onChange: (filters: SearchFilters) => void;
 }
 
+function activeFilterCount(filters: SearchFilters) {
+  return [
+    filters.maxPrice !== undefined,
+    filters.minRating !== undefined,
+    Boolean(filters.location),
+    Boolean(filters.sortBy && filters.sortBy !== 'relevance'),
+  ].filter(Boolean).length;
+}
+
 export function FilterSidebar({ filters, onChange }: FilterSidebarProps): JSX.Element {
+  const count = activeFilterCount(filters);
+
   function handleChange(key: keyof SearchFilters, value: unknown): void {
     onChange({ ...filters, [key]: value });
   }
@@ -53,68 +40,101 @@ export function FilterSidebar({ filters, onChange }: FilterSidebarProps): JSX.El
   }
 
   return (
-    <div style={CONTAINER_STYLE}>
-      <h3 style={HEADER_STYLE}>Filters</h3>
-
-      <div style={FILTER_SECTION_STYLE}>
-        <label htmlFor="max-price" style={LABEL_STYLE}>
-          Max Price
-        </label>
-        <DramsInput
-          id="max-price"
-          type="number"
-          min="0"
-          step="0.01"
-          value={formatValue(filters.maxPrice)}
-          onChange={(e) =>
-            handleChange('maxPrice', e.target.value ? Number(e.target.value) : undefined)
-          }
-          placeholder="Any"
-        />
+    <Card className="space-y-6 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]">
+            Refine
+          </div>
+          <h3 className="text-xl font-bold tracking-[-0.03em] text-[var(--ui-text)]">
+            Search filters
+          </h3>
+          <p className="text-sm text-[var(--ui-text-secondary)]">
+            Tighten the result set before you compare offers.
+          </p>
+        </div>
+        <Badge tone={count ? 'warning' : 'neutral'}>
+          {count ? `${count} active` : 'Base view'}
+        </Badge>
       </div>
 
-      <div style={FILTER_SECTION_STYLE}>
-        <label htmlFor="min-rating" style={LABEL_STYLE}>
-          Min Rating
-        </label>
-        <DramsInput
-          id="min-rating"
-          type="number"
-          min="0"
-          max="5"
-          step="0.1"
-          value={formatValue(filters.minRating)}
-          onChange={(e) =>
-            handleChange('minRating', e.target.value ? Number(e.target.value) : undefined)
-          }
-          placeholder="Any"
-        />
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label
+            htmlFor="max-price"
+            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
+          >
+            Max price
+          </label>
+          <Input
+            id="max-price"
+            type="number"
+            min="0"
+            step="0.01"
+            value={formatValue(filters.maxPrice)}
+            onChange={(event) =>
+              handleChange('maxPrice', event.target.value ? Number(event.target.value) : undefined)
+            }
+            placeholder="Any"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="min-rating"
+            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
+          >
+            Min rating
+          </label>
+          <Input
+            id="min-rating"
+            type="number"
+            min="0"
+            max="5"
+            step="0.1"
+            value={formatValue(filters.minRating)}
+            onChange={(event) =>
+              handleChange('minRating', event.target.value ? Number(event.target.value) : undefined)
+            }
+            placeholder="Any"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="sort-by"
+            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
+          >
+            Sort by
+          </label>
+          <DramsDropdown
+            id="sort-by"
+            options={SORT_OPTIONS}
+            value={filters.sortBy ?? 'relevance'}
+            onChange={(value) => handleChange('sortBy', value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="location"
+            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
+          >
+            Delivery area
+          </label>
+          <Input
+            id="location"
+            type="text"
+            value={filters.location ?? ''}
+            onChange={(event) => handleChange('location', event.target.value || undefined)}
+            placeholder="City or PIN code"
+          />
+        </div>
       </div>
 
-      <div style={FILTER_SECTION_STYLE}>
-        <label htmlFor="sort-by" style={LABEL_STYLE}>
-          Sort By
-        </label>
-        <DramsDropdown
-          id="sort-by"
-          options={SORT_OPTIONS}
-          value={filters.sortBy ?? 'relevance'}
-          onChange={(value) => handleChange('sortBy', value)}
-        />
-      </div>
-
-      <div style={FILTER_SECTION_STYLE}>
-        <label htmlFor="location" style={LABEL_STYLE}>
-          Location
-        </label>
-        <DramsInput
-          id="location"
-          type="text"
-          value={filters.location ?? ''}
-          onChange={(e) => handleChange('location', e.target.value || undefined)}
-          placeholder="City, PIN code..."
-        />
-      </div>
-    </div>
+      <Button type="button" variant="ghost" fullWidth onClick={() => onChange({})}>
+        Reset filters
+      </Button>
+    </Card>
   );
 }
