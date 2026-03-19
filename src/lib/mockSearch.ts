@@ -2,6 +2,46 @@ import type { UCPItem } from '../types';
 
 const MOCK_BUYER_ITEMS: UCPItem[] = [
   {
+    id: 'fresh-apples-1kg',
+    name: 'Shimla Apples 1kg',
+    description: 'Fresh table apples packed for same-day grocery delivery.',
+    descriptor: {
+      name: 'Shimla Apples 1kg',
+      short_desc: 'Fruit order candidate for agent-first buyer flows.',
+    },
+    price: {
+      currency: 'INR',
+      value: '160.00',
+    },
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=800&q=80',
+      },
+    ],
+    category: 'fruits',
+    _provider: 'Orchard Fresh',
+  },
+  {
+    id: 'organic-apples-1kg',
+    name: 'Organic Apples 1kg',
+    description: 'Certified organic apples for high-trust produce ordering.',
+    descriptor: {
+      name: 'Organic Apples 1kg',
+      short_desc: 'Organic produce candidate for trusted checkout.',
+    },
+    price: {
+      currency: 'INR',
+      value: '195.00',
+    },
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1570913149827-d2ac84ab3f9a?auto=format&fit=crop&w=800&q=80',
+      },
+    ],
+    category: 'fruits',
+    _provider: 'Earth Basket',
+  },
+  {
     id: 'basmati-rice-5kg',
     name: 'Basmati Rice 5kg',
     description: 'Premium long-grain rice suited for pantry-stock buyer validation.',
@@ -56,6 +96,26 @@ const MOCK_BUYER_ITEMS: UCPItem[] = [
     ],
     category: 'grocery',
     _provider: 'Morning Roast',
+  },
+  {
+    id: 'banana-robusta-dozen',
+    name: 'Robusta Bananas (12 pcs)',
+    description: 'Banana bunch for quick-delivery household orders.',
+    descriptor: {
+      name: 'Robusta Bananas (12 pcs)',
+      short_desc: 'Daily fruit restock candidate.',
+    },
+    price: {
+      currency: 'INR',
+      value: '78.00',
+    },
+    images: [
+      {
+        url: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=800&q=80',
+      },
+    ],
+    category: 'fruits',
+    _provider: 'City Greens',
   },
 ];
 

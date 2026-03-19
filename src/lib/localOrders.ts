@@ -50,6 +50,20 @@ export function getDemoOrder(orderId: string): UCPOrder | null {
   return readOrderStore().find((order) => order.id === orderId) ?? null;
 }
 
+export function upsertDemoOrder(order: UCPOrder): UCPOrder {
+  const orders = readOrderStore();
+  const index = orders.findIndex((entry) => entry.id === order.id);
+
+  if (index >= 0) {
+    orders[index] = order;
+  } else {
+    orders.unshift(order);
+  }
+
+  writeOrderStore(orders);
+  return order;
+}
+
 export function createDemoOrder(
   sessionId: string,
   session: UCPSession,

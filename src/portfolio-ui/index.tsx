@@ -1138,6 +1138,7 @@ export interface AgentChatProps {
   title?: string;
   sessionId?: string;
   requestHeaders?: HeadersInit | (() => HeadersInit);
+  buildRequestContext?: () => Record<string, unknown>;
   onMessage?: (message: AgentChatMessage) => void;
   height?: CSSProperties['height'];
   showEmptyState?: boolean;
@@ -1184,7 +1185,7 @@ function normalizeStreamMessage(message: AgentChatMessage): AgentChatMessage | n
     };
   }
 
-  if (message.type === 'init' || message.type === 'usage') {
+  if (message.type === 'init' || message.type === 'usage' || message.type === 'session_state' || message.type === 'client_patch') {
     return null;
   }
 
@@ -1285,6 +1286,7 @@ export function AgentChat({
   title = 'Agent Chat',
   sessionId: initialSessionId = '',
   requestHeaders,
+  buildRequestContext,
   onMessage,
   height,
   showEmptyState = true,
@@ -1322,7 +1324,11 @@ export function AgentChat({
           'Content-Type': 'application/json',
           ...(resolvedHeaders ?? {}),
         },
-        body: JSON.stringify({ prompt, sessionId, context: {} }),
+        body: JSON.stringify({
+          prompt,
+          sessionId,
+          context: buildRequestContext ? buildRequestContext() : {},
+        }),
       });
 
       if (!response.ok) {
@@ -1337,11 +1343,8 @@ export function AgentChat({
       await processStream(
         reader,
         (message) => {
+          onMessage?.(message);
           setMessages((current) => appendAgentMessage(current, message));
-          const normalized = normalizeStreamMessage(message);
-          if (normalized) {
-            onMessage?.(normalized);
-          }
         },
         () => setIsLoading(false),
         (errorMessage) => {
@@ -1360,7 +1363,7 @@ export function AgentChat({
       ]);
       setIsLoading(false);
     }
-  }, [endpoint, input, isLoading, onMessage, requestHeaders, sessionId]);
+  }, [buildRequestContext, endpoint, input, isLoading, onMessage, requestHeaders, sessionId]);
 
   return (
     <ChatLayout

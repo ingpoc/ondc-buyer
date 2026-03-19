@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { UCPOrder, UCPOrderStatus, UCPFulfillmentStatus } from '../types';
+import type { BuyerSupportCase } from '../types/agent';
 import { PageLayout, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, CARD, BADGE } from '@portfolio-ui';
 import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { cancelDemoOrder, getDemoOrder } from '../lib/localOrders';
+import { createLocalSupportCase, listSupportCases } from '../lib/localSupportCases';
 
 // Mock order fetch - to be replaced with API call
 const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
@@ -96,6 +98,21 @@ const ERROR_STYLE = {
   textAlign: 'center' as const,
 };
 
+const SUPPORT_FORM_INPUT_STYLE = {
+  width: '100%',
+  padding: SPACING.md,
+  borderRadius: '16px',
+  border: `1px solid ${COLORS.border}`,
+  backgroundColor: COLORS.bgPage,
+  ...TYPOGRAPHY.body,
+};
+
+const SUPPORT_FORM_TEXTAREA_STYLE = {
+  ...SUPPORT_FORM_INPUT_STYLE,
+  minHeight: '120px',
+  resize: 'vertical' as const,
+};
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -103,6 +120,9 @@ export function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [supportCases, setSupportCases] = useState<BuyerSupportCase[]>([]);
+  const [issueType, setIssueType] = useState<BuyerSupportCase['issue_type']>('fulfillment');
+  const [issueDescription, setIssueDescription] = useState('');
 
   // Load order data
   useEffect(() => {
@@ -119,6 +139,7 @@ export function OrderDetailPage() {
           setError('Order not found');
         } else {
           setOrder(data);
+          setSupportCases(listSupportCases(data.id));
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load order');
@@ -174,6 +195,22 @@ export function OrderDetailPage() {
     } finally {
       setCancelling(false);
     }
+  };
+
+  const handleCreateIssue = () => {
+    if (!order || !issueDescription.trim()) {
+      return;
+    }
+
+    const supportCase = createLocalSupportCase({
+      order_id: order.id,
+      issue_type: issueType,
+      description: issueDescription.trim(),
+      evidence_links: [],
+    });
+
+    setSupportCases((current) => [supportCase, ...current]);
+    setIssueDescription('');
   };
 
   if (loading) {
@@ -505,6 +542,89 @@ export function OrderDetailPage() {
             </p>
           )}
         </div>
+      </div>
+
+      <div style={{ marginBottom: SPACING.xl }}>
+        <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.md }}>Support & Grievance</h2>
+        <div
+          style={{
+            ...CARD.base,
+            backgroundColor: COLORS.bgPage,
+            marginBottom: SPACING.lg,
+          }}
+        >
+          <p style={{ margin: `0 0 ${SPACING.md} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
+            Raise a buyer-side support case from the manual order view. The agent can also read these cases on the next session sync.
+          </p>
+          <div style={{ display: 'grid', gap: SPACING.md }}>
+            <select
+              value={issueType}
+              onChange={(event) => setIssueType(event.target.value as BuyerSupportCase['issue_type'])}
+              style={SUPPORT_FORM_INPUT_STYLE}
+            >
+              <option value="fulfillment">Fulfillment issue</option>
+              <option value="post_delivery">Post-delivery issue</option>
+              <option value="payment">Payment or refund</option>
+              <option value="other">Other</option>
+            </select>
+            <textarea
+              value={issueDescription}
+              onChange={(event) => setIssueDescription(event.target.value)}
+              placeholder="Describe the issue, impact, and any resolution you expect."
+              style={SUPPORT_FORM_TEXTAREA_STYLE}
+            />
+            <button
+              type="button"
+              onClick={handleCreateIssue}
+              disabled={!issueDescription.trim()}
+              style={
+                !issueDescription.trim()
+                  ? { ...BUTTON.primary, opacity: 0.5, cursor: 'not-allowed' }
+                  : BUTTON.primary
+              }
+            >
+              Create Support Case
+            </button>
+          </div>
+        </div>
+
+        {supportCases.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.md }}>
+            {supportCases.map((supportCase) => (
+              <div
+                key={supportCase.case_id}
+                style={{
+                  ...CARD.base,
+                  backgroundColor: COLORS.bgPage,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACING.md, alignItems: 'flex-start' }}>
+                  <div>
+                    <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.label }}>{supportCase.network_case_id}</p>
+                    <p style={{ margin: 0, ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
+                      {supportCase.issue_type} · {new Date(supportCase.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div
+                    style={{
+                      ...BADGE.base,
+                      ...(supportCase.status === 'resolved' ? BADGE.success : BADGE.warning),
+                    }}
+                  >
+                    {supportCase.status}
+                  </div>
+                </div>
+                <p style={{ margin: `${SPACING.md} 0 0 0`, ...TYPOGRAPHY.body }}>{supportCase.description}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...CARD.base, backgroundColor: COLORS.bgPage }}>
+            <p style={{ margin: 0, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
+              No support cases yet for this order.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Documents */}
