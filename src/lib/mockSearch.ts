@@ -119,13 +119,22 @@ const MOCK_BUYER_ITEMS: UCPItem[] = [
   },
 ];
 
+export function getMockBuyerItems(): UCPItem[] {
+  return MOCK_BUYER_ITEMS.map((item) => ({
+    ...item,
+    descriptor: item.descriptor ? { ...item.descriptor } : item.descriptor,
+    price: item.price ? { ...item.price } : item.price,
+    images: Array.isArray(item.images) ? item.images.map((image) => ({ ...image })) : item.images,
+  }));
+}
+
 function filterItems(endpoint: string) {
   const [, query = ''] = endpoint.split('?');
   const params = new URLSearchParams(query);
   const term = (params.get('q') || '').trim().toLowerCase();
   const category = (params.get('category') || '').trim().toLowerCase();
 
-  const items = MOCK_BUYER_ITEMS.filter((item) => {
+  const items = getMockBuyerItems().filter((item) => {
     const haystack = [
       item.name,
       item.description,
@@ -156,7 +165,7 @@ export function resolveMockBuyerEndpoint(endpoint: string): unknown | null {
 
   if (endpoint.startsWith('/api/catalog/products/')) {
     const id = endpoint.split('/').pop() || '';
-    return MOCK_BUYER_ITEMS.find((item) => item.id === id) || null;
+    return getMockBuyerItems().find((item) => item.id === id) || null;
   }
 
   return null;
