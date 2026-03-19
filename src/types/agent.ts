@@ -255,3 +255,101 @@ export type BuyerClientPatch =
   | { patch_type: 'replace_cart'; cart_session: BuyerCartSessionSnapshot }
   | { patch_type: 'upsert_order'; order: BuyerOrderRecord }
   | { patch_type: 'upsert_support_case'; support_case: BuyerSupportCase };
+
+export interface BuyerAgentSnapshot {
+  route: {
+    path: string;
+    search: string;
+  };
+  trust: {
+    state: PortfolioTrustState;
+    write_enabled: boolean;
+  };
+  catalog: {
+    total_items: number;
+    items: Array<{
+      id: string;
+      name: string;
+      description: string;
+      category: string;
+      price: string;
+      provider: string;
+    }>;
+  };
+  cart: {
+    session_id: string;
+    item_count: number;
+    subtotal: string;
+    items: Array<{
+      item_id: string;
+      name: string;
+      quantity: number;
+      price: string;
+    }>;
+    buyer_profile_ready: boolean;
+  };
+  orders: {
+    total: number;
+    recent: Array<{
+      id: string;
+      status: string;
+      total: string;
+      provider_name: string;
+      created_at: string;
+    }>;
+  };
+}
+
+export interface BuyerRecommendItemAction {
+  type: 'recommend_item';
+  item_id: string;
+  reason: string;
+}
+
+export interface BuyerCartAddAction {
+  type: 'cart_add';
+  item_id: string;
+  quantity: number;
+  reason: string;
+}
+
+export interface BuyerNavigateAction {
+  type: 'navigate';
+  path: string;
+  reason: string;
+}
+
+export interface BuyerTrustRequiredAction {
+  type: 'trust_required';
+  operation: string;
+  reason: string;
+  suggested_path?: string;
+}
+
+export interface BuyerUnsupportedAction {
+  type: 'unsupported';
+  reason: string;
+}
+
+export type BuyerAgentAction =
+  | BuyerRecommendItemAction
+  | BuyerCartAddAction
+  | BuyerNavigateAction
+  | BuyerTrustRequiredAction
+  | BuyerUnsupportedAction;
+
+export interface BuyerAgentResponseEnvelope {
+  summary: string;
+  actions: BuyerAgentAction[];
+}
+
+export interface BuyerAgentPatchResult {
+  summary: string;
+  actions: BuyerAgentAction[];
+  itemsToAdd: Array<{
+    item: import('.').BecknItem;
+    quantity: number;
+  }>;
+  navigateTo: string | null;
+  trustBlockReason: string | null;
+}
