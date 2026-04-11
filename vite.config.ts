@@ -22,7 +22,8 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('development'),
   },
   server: {
-    port: 3002,
+    strictPort: true,
+    port: 43102,
     proxy: {
       '/api/entitlements': 'http://localhost:8100',
       '/api/agent': 'http://localhost:8100',
