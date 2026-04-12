@@ -1,82 +1,136 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCart, useTrustState } from '../hooks';
-import type { UCPQuote, UCPAddress } from '../types';
-import { PageLayout, PageHeader, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, BADGE, CARD, PILL_BUTTON, GRID, DramsInput } from '@portfolio-ui';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { BillingForm } from '../components/BillingForm';
 import { PaymentSelector } from '../components/PaymentSelector';
 import { QuoteDisplay } from '../components/QuoteDisplay';
 import { TrustNotice } from '../components/TrustStatus';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useCart, useTrustState } from '../hooks';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { createLocalQuote } from '../lib/localCart';
 import { createDemoOrder } from '../lib/localOrders';
+import type { UCPAddress, UCPQuote } from '../types';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '../components/ui/field';
+import { Input } from '../components/ui/input';
+import { Separator } from '../components/ui/separator';
+import { Spinner } from '../components/ui/spinner';
 
-const ERROR_ALERT_STYLE = {
-  ...BADGE.error,
-  padding: SPACING.lg,
-  marginBottom: SPACING.xl,
-  position: 'relative' as const,
-};
+interface DeliveryAddressFormProps {
+  address: UCPAddress;
+  onChange: (address: UCPAddress) => void;
+}
 
-const ERROR_CLOSE_STYLE = {
-  position: 'absolute' as const,
-  top: SPACING.md,
-  right: SPACING.md,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  ...TYPOGRAPHY.h3,
-  color: COLORS.error,
-  padding: '0',
-  width: '24px',
-  height: '24px',
-};
+function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
+  const handleChange = (field: keyof UCPAddress, value: string) => {
+    onChange({ ...address, [field]: value });
+  };
 
-const FORMS_SECTION_STYLE = {
-  display: 'flex',
-  flexDirection: 'column' as const,
-  gap: SPACING.xl,
-};
+  return (
+    <Card className="border-border/70 bg-card/90">
+      <CardHeader className="space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Delivery
+        </div>
+        <CardTitle className="text-xl">Delivery address</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="delivery-line1">Street address *</FieldLabel>
+            <Input
+              id="delivery-line1"
+              required
+              value={address.line1 || ''}
+              onChange={(event) => handleChange('line1', event.target.value)}
+              placeholder="123 Main Street, Apt 4B"
+            />
+          </Field>
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="delivery-city">City *</FieldLabel>
+              <Input
+                id="delivery-city"
+                required
+                value={address.city || ''}
+                onChange={(event) => handleChange('city', event.target.value)}
+                placeholder="Bangalore"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="delivery-state">State *</FieldLabel>
+              <Input
+                id="delivery-state"
+                required
+                value={address.state || ''}
+                onChange={(event) => handleChange('state', event.target.value)}
+                placeholder="Karnataka"
+              />
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="delivery-postal-code">Postal code *</FieldLabel>
+            <Input
+              id="delivery-postal-code"
+              required
+              value={address.postalCode || ''}
+              onChange={(event) => handleChange('postalCode', event.target.value)}
+              placeholder="560001"
+              pattern="[0-9]{6}"
+            />
+            <FieldDescription>
+              Use a 6-digit PIN code so local quote generation can estimate delivery.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </CardContent>
+    </Card>
+  );
+}
 
-const SIDEBAR_STYLE = {
-  position: 'sticky' as const,
-  top: SPACING.xl,
-  alignSelf: 'start' as const,
-};
+function CartSummary({ currency }: { currency: string }) {
+  const { session, subtotal } = useCart();
 
-const BUTTON_PRIMARY_STYLE = {
-  ...PILL_BUTTON.orange,
-  width: '100%',
-  marginTop: SPACING.lg,
-};
+  if (!session) return null;
 
-const BUTTON_DISABLED_STYLE = {
-  ...BUTTON.primary,
-  width: '100%',
-  backgroundColor: COLORS.textMuted,
-  cursor: 'not-allowed',
-  marginTop: SPACING.lg,
-};
+  return (
+    <Card className="border-border/70 bg-card/90">
+      <CardHeader className="space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Cart preview
+        </div>
+        <CardTitle className="text-xl">Current basket</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {session.items.map((item: any) => (
+          <div key={item.item.id} className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">
+              {item.item.descriptor?.name || item.item.id} × {item.quantity}
+            </span>
+            <span className="font-medium">
+              {currency} {(parseFloat(item.item.price?.value || '0') * item.quantity).toFixed(2)}
+            </span>
+          </div>
+        ))}
 
-const VALIDATION_MESSAGE_STYLE = {
-  ...TYPOGRAPHY.bodySmall,
-  color: COLORS.error,
-  marginTop: SPACING.sm,
-};
+        <Separator />
 
-const LOADING_STYLE = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: SPACING['3xl'],
-  color: DRAMS.textLight,
-  ...TYPOGRAPHY.body,
-};
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground">Subtotal</span>
+          <span className="font-medium">
+            {currency} {subtotal.toFixed(2)}
+          </span>
+        </div>
 
-const FOOTER_STYLE = {
-  marginTop: SPACING.xl,
-};
+        <p className="text-sm text-muted-foreground">
+          Complete the form to estimate delivery, tax, and the final quote.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function CheckoutPage() {
   const navigate = useNavigate();
@@ -96,20 +150,20 @@ export function CheckoutPage() {
 
   const trustBlocksCheckout = !trust.loading && trust.state !== 'verified';
 
-  // Redirect to cart if empty (only after we've loaded the session)
   useEffect(() => {
-    // Check session is not null to ensure we've actually loaded the cart
     if (!loading && session && itemCount === 0) {
       navigate('/cart');
     }
-  }, [loading, itemCount, navigate, session]);
+  }, [itemCount, loading, navigate, session]);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+
     if (trustBlocksCheckout) {
       setSubmitError(trust.reason || 'Complete AadhaarChain verification before continuing.');
       return;
     }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -130,7 +184,9 @@ export function CheckoutPage() {
         }
 
         setQuote(createLocalQuote(session, deliveryAddress));
-        setSubmitError('Live checkout service is unavailable. Review the local demo quote, then place the order to complete checkout.');
+        setSubmitError(
+          'Live checkout service is unavailable. Review the local demo quote, then place the order to complete checkout.',
+        );
         return;
       }
 
@@ -151,13 +207,11 @@ export function CheckoutPage() {
 
       const data = await response.json();
 
-      // If order was created, navigate to order confirmation
       if (data.order?.id) {
         navigate(`/orders/${data.order.id}`);
         return;
       }
 
-      // Otherwise, show quote for confirmation
       setQuote(data.quote);
     } catch (err) {
       if (session) {
@@ -169,40 +223,47 @@ export function CheckoutPage() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
   if (loading && !session) {
     return (
-      <PageLayout>
-        <div style={LOADING_STYLE}>
-          Loading checkout...
-        </div>
-      </PageLayout>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <Spinner className="size-6" />
+        <div className="text-sm text-muted-foreground">Loading checkout...</div>
+      </div>
     );
   }
 
   if (error && !session) {
     return (
-      <PageLayout>
-        <div style={{ ...BADGE.error, padding: SPACING.lg, textAlign: 'center' }}>
-          <p style={{ margin: 0, ...TYPOGRAPHY.label }}>Error</p>
-          <p style={{ margin: `${SPACING.xs} 0 0 0` }}>{error}</p>
-          <button
-            onClick={() => navigate('/cart')}
-            style={BUTTON.secondary}
-          >
-            Back to Cart
-          </button>
-        </div>
-      </PageLayout>
+      <Card className="border-border/70 bg-card/95 shadow-md">
+        <CardContent className="space-y-4 py-8 text-center">
+          <div className="text-lg font-semibold">Unable to load checkout</div>
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/cart')}>
+            Back to cart
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   const currency = session?.items[0]?.item.price?.currency || 'INR';
+  const buyerReady = Boolean(session?.buyer?.name && session?.buyer?.contact?.email);
+  const actionDisabled = submitting || trustBlocksCheckout || !buyerReady;
 
   return (
-    <PageLayout>
-      <PageHeader title="Checkout" />
+    <div className="space-y-8">
+      <section className="space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          Checkout
+        </div>
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Trust-aware checkout</h1>
+        <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
+          Confirm buyer information, generate a quote, and place the order once AadhaarChain
+          verification allows elevated actions.
+        </p>
+      </section>
 
       <TrustNotice
         state={trust.state}
@@ -212,252 +273,61 @@ export function CheckoutPage() {
         actionLabel="Resolve trust in AadhaarChain"
       />
 
-      {submitError && (
-        <div style={ERROR_ALERT_STYLE}>
-          {submitError}
-          <button
-            onClick={() => setSubmitError(null)}
-            style={ERROR_CLOSE_STYLE}
-          >
-            ×
-          </button>
-        </div>
-      )}
+      {submitError ? (
+        <Card className="border-amber-200 bg-amber-50 text-amber-900 shadow-none">
+          <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-6">{submitError}</p>
+            <Button type="button" variant="outline" className="rounded-full" onClick={() => setSubmitError(null)}>
+              Dismiss
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <form onSubmit={handleSubmit}>
-        <div style={GRID.twoColumnsWide}>
-          <div style={FORMS_SECTION_STYLE}>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="space-y-6">
             <BillingForm session={session} onSave={refreshCart} />
-            <DeliveryAddressForm
-              address={deliveryAddress}
-              onChange={setDeliveryAddress}
-            />
+            <DeliveryAddressForm address={deliveryAddress} onChange={setDeliveryAddress} />
             <PaymentSelector />
           </div>
 
-          <div style={SIDEBAR_STYLE}>
-            {quote ? (
-              <QuoteDisplay quote={quote} currency={currency} />
-            ) : (
-              <CartSummary currency={currency} />
-            )}
+          <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+            {quote ? <QuoteDisplay quote={quote} currency={currency} /> : <CartSummary currency={currency} />}
 
-            <button
-              type="submit"
-              disabled={
-                submitting ||
-                trustBlocksCheckout ||
-                !session?.buyer?.name ||
-                !session?.buyer?.contact?.email
-              }
-              style={
-                submitting ||
-                trustBlocksCheckout ||
-                !session?.buyer?.name ||
-                !session?.buyer?.contact?.email
-                  ? BUTTON_DISABLED_STYLE
-                  : BUTTON_PRIMARY_STYLE
-              }
-            >
-              {trustBlocksCheckout
-                ? 'Trust verification required'
-                : submitting
-                  ? 'Processing...'
-                  : quote
-                    ? 'Place Order'
-                    : 'Get Quote'}
-            </button>
+            <Card className="border-border/70 bg-card/90">
+              <CardContent className="space-y-4 py-6">
+                <Button type="submit" className="w-full rounded-full" disabled={actionDisabled}>
+                  {trustBlocksCheckout
+                    ? 'Trust verification required'
+                    : submitting
+                      ? 'Processing...'
+                      : quote
+                        ? 'Place order'
+                        : 'Get quote'}
+                </Button>
 
-            {(trustBlocksCheckout || !session?.buyer?.name || !session?.buyer?.contact?.email) && (
-              <p style={VALIDATION_MESSAGE_STYLE}>
-                {trustBlocksCheckout
-                  ? trust.reason || 'Complete AadhaarChain verification to continue.'
-                  : 'Please complete billing information to continue'}
-              </p>
-            )}
+                {actionDisabled ? (
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <Badge variant="outline" className="rounded-full">
+                      Validation
+                    </Badge>
+                    <p>
+                      {trustBlocksCheckout
+                        ? trust.reason || 'Complete AadhaarChain verification to continue.'
+                        : 'Please complete billing information before continuing.'}
+                    </p>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </form>
 
-      <div style={FOOTER_STYLE}>
-        <button
-          type="button"
-          onClick={() => navigate('/cart')}
-          style={BUTTON.secondary}
-        >
-          ← Back to Cart
-        </button>
-      </div>
-    </PageLayout>
-  );
-}
-
-interface DeliveryAddressFormProps {
-  address: UCPAddress;
-  onChange: (address: UCPAddress) => void;
-}
-
-function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
-  const handleChange = (field: keyof UCPAddress, value: string) => {
-    onChange({ ...address, [field]: value });
-  };
-
-  const LABEL_STYLE = {
-    display: 'block',
-    marginBottom: SPACING.sm,
-    ...TYPOGRAPHY.label,
-    color: DRAMS.textDark,
-  };
-
-  const INPUT_GRID_STYLE = {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: SPACING.lg,
-  };
-
-  const FORM_GROUP_STYLE = {
-    marginBottom: SPACING.lg,
-  };
-
-  return (
-    <div style={CARD.base}>
-      <h2 style={{ ...TYPOGRAPHY.h3, color: DRAMS.textDark, margin: `0 0 ${SPACING.lg} 0` }}>Delivery Address</h2>
-
-      <div>
-        <div style={FORM_GROUP_STYLE}>
-          <label htmlFor="delivery-line1" style={LABEL_STYLE}>
-            Street Address *
-          </label>
-          <DramsInput
-            id="delivery-line1"
-            name="deliveryLine1"
-            type="text"
-            required
-            value={address.line1}
-            onChange={(e) => handleChange('line1', e.target.value)}
-            placeholder="123 Main Street, Apt 4B"
-          />
-        </div>
-
-        <div style={INPUT_GRID_STYLE}>
-          <div style={FORM_GROUP_STYLE}>
-            <label htmlFor="delivery-city" style={LABEL_STYLE}>
-              City *
-            </label>
-            <DramsInput
-              id="delivery-city"
-              name="deliveryCity"
-              type="text"
-              required
-              value={address.city}
-              onChange={(e) => handleChange('city', e.target.value)}
-              placeholder="Bangalore"
-            />
-          </div>
-
-          <div style={FORM_GROUP_STYLE}>
-            <label htmlFor="delivery-state" style={LABEL_STYLE}>
-              State *
-            </label>
-            <DramsInput
-              id="delivery-state"
-              name="deliveryState"
-              type="text"
-              required
-              value={address.state}
-              onChange={(e) => handleChange('state', e.target.value)}
-              placeholder="Karnataka"
-            />
-          </div>
-        </div>
-
-        <div style={FORM_GROUP_STYLE}>
-          <label htmlFor="delivery-postal-code" style={LABEL_STYLE}>
-            Postal Code *
-          </label>
-          <DramsInput
-            id="delivery-postal-code"
-            name="deliveryPostalCode"
-            type="text"
-            required
-            value={address.postalCode}
-            onChange={(e) => handleChange('postalCode', e.target.value)}
-            placeholder="560001"
-            pattern="[0-9]{6}"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface CartSummaryProps {
-  currency: string;
-}
-
-function CartSummary({ currency }: CartSummaryProps) {
-  const { session, subtotal } = useCart();
-
-  if (!session) return null;
-
-  const ITEM_ROW_STYLE = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: `${SPACING.sm} 0`,
-    borderBottom: `1px solid ${DRAMS.grayTrack}`,
-  };
-
-  const SUMMARY_SECTION_STYLE = {
-    borderTop: `1px solid ${DRAMS.grayTrack}`,
-    paddingTop: SPACING.lg,
-  };
-
-  const TOTAL_ROW_STYLE = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-    ...TYPOGRAPHY.body,
-  };
-
-  const NOTE_STYLE = {
-    ...TYPOGRAPHY.bodySmall,
-    color: DRAMS.textLight,
-    marginTop: SPACING.md,
-    lineHeight: 1.5,
-  };
-
-  return (
-    <div style={CARD.base}>
-      <h2 style={{ ...TYPOGRAPHY.h3, color: DRAMS.textDark, margin: `0 0 ${SPACING.lg} 0` }}>Order Summary</h2>
-
-      <div style={{ marginBottom: SPACING.lg }}>
-        {session.items.map((item: any) => (
-          <div
-            key={item.item.id}
-            style={ITEM_ROW_STYLE}
-          >
-            <span style={{ ...TYPOGRAPHY.body, color: DRAMS.textDark }}>
-              {item.item.descriptor?.name || item.item.id} × {item.quantity}
-            </span>
-            <span style={{ ...TYPOGRAPHY.label, color: DRAMS.textDark }}>
-              {currency}{' '}
-              {((parseFloat(item.item.price?.value || '0') * item.quantity).toFixed(2))}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div style={SUMMARY_SECTION_STYLE}>
-        <div style={TOTAL_ROW_STYLE}>
-          <span style={{ color: DRAMS.textLight }}>Subtotal</span>
-          <span style={{ ...TYPOGRAPHY.label, color: DRAMS.textDark }}>
-            {currency} {subtotal.toFixed(2)}
-          </span>
-        </div>
-        <p style={NOTE_STYLE}>
-          Complete the form to get final pricing with delivery and tax
-        </p>
-      </div>
+      <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/cart')}>
+        Back to cart
+      </Button>
     </div>
   );
 }

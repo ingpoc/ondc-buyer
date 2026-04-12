@@ -1,7 +1,28 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Badge, Button, Input, DramsDropdown } from '@portfolio-ui';
+import { Search } from 'lucide-react';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import {
+  Field,
+  FieldContent,
+  FieldGroup,
+  FieldLabel,
+} from './ui/field';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from './ui/input-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
-const CATEGORY_OPTIONS = [
+export const CATEGORY_OPTIONS = [
   { value: 'grocery', label: 'Grocery' },
   { value: 'restaurant', label: 'Restaurant' },
   { value: 'fashion', label: 'Fashion' },
@@ -23,6 +44,8 @@ export function SearchBar({
 }: SearchBarProps): JSX.Element {
   const [category, setCategory] = useState(defaultCategory);
   const [query, setQuery] = useState(defaultQuery);
+  const categoryFieldId = compact ? 'search-category-compact' : 'search-category';
+  const queryFieldId = compact ? 'search-query-compact' : 'search-query';
 
   useEffect(() => {
     setCategory(defaultCategory);
@@ -37,75 +60,92 @@ export function SearchBar({
     onSearch(category, query.trim());
   }
 
+  const searchGroupClassName = compact ? undefined : 'h-12 rounded-[1.6rem] bg-background';
+  const searchInputClassName = compact
+    ? undefined
+    : 'h-12 text-[15px] md:text-[15px] placeholder:text-[15px]';
+  const categoryTriggerClassName = compact ? undefined : 'h-12 text-[15px] md:text-[15px]';
+
   return (
     <form onSubmit={handleSubmit} className={compact ? 'space-y-4' : 'space-y-6'}>
       {!compact ? (
         <div className="flex flex-wrap gap-2">
-          <Badge tone="info">Intent-first search</Badge>
-          <Badge tone="neutral">Verified commerce</Badge>
+          <Badge variant="secondary" className="rounded-full">
+            Intent-first search
+          </Badge>
+          <Badge variant="outline" className="rounded-full">
+            Verified commerce
+          </Badge>
         </div>
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
-        <div className="space-y-2">
-          <label
-            htmlFor="category-dropdown"
-            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
-          >
-            Category
-          </label>
-          <DramsDropdown
-            id="category-dropdown"
-            options={CATEGORY_OPTIONS}
-            value={category}
-            onChange={setCategory}
-            placeholder="Select category"
-          />
+      <FieldGroup className="gap-4">
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <Field>
+            <FieldLabel htmlFor={categoryFieldId}>Category</FieldLabel>
+            <FieldContent>
+              <Select name="category" value={category} onValueChange={setCategory}>
+                <SelectTrigger id={categoryFieldId} className={categoryTriggerClassName}>
+                  <SelectValue placeholder="Choose a lane" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FieldContent>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor={queryFieldId}>Search</FieldLabel>
+            <FieldContent>
+              <InputGroup className={searchGroupClassName}>
+                <InputGroupAddon>
+                  <InputGroupText>
+                    <Search className="size-4" />
+                  </InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id={queryFieldId}
+                  name="query"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Fresh fruit, ready meals, office staples..."
+                  className={searchInputClassName}
+                />
+              </InputGroup>
+            </FieldContent>
+          </Field>
         </div>
 
-        <div className="space-y-2">
-          <label
-            htmlFor="search-input"
-            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
-          >
-            Search
-          </label>
-          <Input
-            id="search-input"
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Fresh fruit, ready meals, office staples..."
-          />
-        </div>
-
-        <div className="space-y-2">
-          <span className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]">
-            Action
-          </span>
-          <Button type="submit" size="lg" fullWidth className="lg:w-auto">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Start broad, then narrow to the strongest verified option before checkout.
+          </p>
+          <Button type="submit" size="lg" className="w-full rounded-full sm:w-auto sm:min-w-44">
             Search network
           </Button>
         </div>
-      </div>
+      </FieldGroup>
 
       {!compact ? (
         <div className="flex flex-wrap gap-2">
           {CATEGORY_OPTIONS.map((option) => {
             const active = option.value === category;
             return (
-              <button
+              <Button
                 key={option.value}
                 type="button"
+                variant={active ? 'default' : 'outline'}
+                size="sm"
+                className="rounded-full"
                 onClick={() => setCategory(option.value)}
-                className={
-                  active
-                    ? 'rounded-[var(--ui-radius-pill)] bg-[rgba(234,106,42,0.12)] px-4 py-2 text-sm font-semibold text-[var(--ui-primary-strong)]'
-                    : 'rounded-[var(--ui-radius-pill)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ui-text-secondary)] transition-colors duration-150 hover:text-[var(--ui-text)]'
-                }
               >
                 {option.label}
-              </button>
+              </Button>
             );
           })}
         </div>

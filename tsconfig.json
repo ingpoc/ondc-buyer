@@ -15,7 +15,6 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@portfolio-ui": ["./src/portfolio-ui/index.tsx"],
       "react": ["./node_modules/@types/react/index.d.ts"],
       "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"]

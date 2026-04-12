@@ -1,26 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { UCPOrder, UCPOrderStatus, UCPFulfillmentStatus } from '../types';
-import { PageLayout, DRAMS, COLORS, SPACING, TYPOGRAPHY, BUTTON, CARD, BADGE } from '@portfolio-ui';
+import { ChevronLeft, MapPin, Truck } from 'lucide-react';
 import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { cancelDemoOrder, getDemoOrder } from '../lib/localOrders';
+import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Spinner } from '../components/ui/spinner';
 
-// Mock order fetch - to be replaced with API call
+const CANCELLABLE_STATUSES: UCPOrderStatus[] = ['created', 'accepted', 'in_progress'];
+const isCancellable = (status: UCPOrderStatus): boolean => CANCELLABLE_STATUSES.includes(status);
+
 const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
   if (COMMERCE_DEMO_MODE) {
     return getDemoOrder(orderId);
   }
   void orderId;
-  // TODO: Replace with actual API call
   return null;
 };
 
-// Order statuses that can be cancelled
-const CANCELLABLE_STATUSES: UCPOrderStatus[] = ['created', 'accepted', 'in_progress'];
-
-const isCancellable = (status: UCPOrderStatus): boolean => CANCELLABLE_STATUSES.includes(status);
-
-const getOrderStatusLabel = (status: UCPOrderStatus): string => {
+function getOrderStatusLabel(status: UCPOrderStatus): string {
   const labels: Record<UCPOrderStatus, string> = {
     created: 'Created',
     accepted: 'Accepted',
@@ -33,17 +33,9 @@ const getOrderStatusLabel = (status: UCPOrderStatus): string => {
     returned: 'Returned',
   };
   return labels[status] || status;
-};
+}
 
-const getOrderStatusBadgeVariant = (status: UCPOrderStatus): keyof typeof BADGE => {
-  if (status === 'cancelled' || status === 'returned') return 'error';
-  if (status === 'delivered') return 'success';
-  if (status === 'created' || status === 'accepted') return 'info';
-  if (status === 'in_progress' || status === 'packed' || status === 'shipped' || status === 'out_for_delivery') return 'warning';
-  return 'success';
-};
-
-const getFulfillmentStatusLabel = (status: UCPFulfillmentStatus): string => {
+function getFulfillmentStatusLabel(status: UCPFulfillmentStatus): string {
   const labels: Record<UCPFulfillmentStatus, string> = {
     pending: 'Pending',
     processing: 'Processing',
@@ -58,45 +50,21 @@ const getFulfillmentStatusLabel = (status: UCPFulfillmentStatus): string => {
     cancelled: 'Cancelled',
   };
   return labels[status] || status;
-};
+}
 
-const formatPrice = (currency: string, value: string | undefined, quantity: number = 1): string => {
-  const numValue = value ? parseFloat(value) : 0;
-  return `${currency} ${(numValue * quantity).toFixed(2)}`;
-};
+function statusClass(status: UCPOrderStatus) {
+  if (status === 'cancelled' || status === 'returned') return 'bg-rose-100 text-rose-800';
+  if (status === 'delivered') return 'bg-lime-100 text-lime-900';
+  if (status === 'created' || status === 'accepted') return 'bg-secondary text-secondary-foreground';
+  return 'bg-lime-50 text-lime-900';
+}
 
-const BACK_BUTTON_STYLE = {
-  ...BUTTON.secondary,
-  marginBottom: SPACING.xl,
-};
+function formatPrice(currency: string, value: string | undefined, quantity = 1) {
+  const numeric = value ? parseFloat(value) : 0;
+  return `${currency} ${(numeric * quantity).toFixed(2)}`;
+}
 
-const HEADER_STYLE = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  marginBottom: SPACING.xl,
-  paddingBottom: SPACING.xl,
-  borderBottom: `1px solid ${DRAMS.grayTrack}`,
-};
-
-const LOADING_STYLE = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: SPACING['3xl'],
-  color: DRAMS.textLight,
-  ...TYPOGRAPHY.body,
-};
-
-const ERROR_STYLE = {
-  ...CARD.base,
-  backgroundColor: '#fef2f2',
-  borderColor: '#fecaca',
-  color: COLORS.error,
-  textAlign: 'center' as const,
-};
-
-export function OrderDetailPage() {
+export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [order, setOrder] = useState<UCPOrder | null>(null);
@@ -104,7 +72,6 @@ export function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  // Load order data
   useEffect(() => {
     const loadOrder = async () => {
       if (!id) {
@@ -127,10 +94,10 @@ export function OrderDetailPage() {
       }
     };
 
-    loadOrder();
+    void loadOrder();
   }, [id]);
 
-  const handleCancel = async () => {
+  async function handleCancel() {
     if (!order || !id) return;
 
     if (!confirm('Are you sure you want to cancel this order?')) {
@@ -148,19 +115,6 @@ export function OrderDetailPage() {
         return;
       }
 
-      // TODO: Replace with actual API call
-      // const response = await fetch(`/api/orders/${id}/cancel`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ reason: 'Buyer requested cancellation' }),
-      // });
-      //
-      // if (!response.ok) throw new Error('Failed to cancel order');
-      //
-      // const updatedOrder = (await response.json()).order as UCPOrder;
-      // setOrder(updatedOrder);
-
-      // Mock cancellation for now
       setOrder({
         ...order,
         status: 'cancelled',
@@ -174,394 +128,200 @@ export function OrderDetailPage() {
     } finally {
       setCancelling(false);
     }
-  };
+  }
 
   if (loading) {
     return (
-      <PageLayout>
-        <div style={LOADING_STYLE}>Loading order details...</div>
-      </PageLayout>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <Spinner className="size-6" />
+        <div className="text-sm text-muted-foreground">Loading order details...</div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <PageLayout>
-        <div style={ERROR_STYLE}>
-          <p style={{ margin: 0, ...BADGE.error }}>Error: {error}</p>
-          <button onClick={() => navigate('/orders')} style={BACK_BUTTON_STYLE}>
-            Back to Orders
-          </button>
-        </div>
-      </PageLayout>
+      <Card className="border-border/70 bg-card/95 shadow-md">
+        <CardContent className="space-y-4 py-8 text-center">
+          <div className="text-lg font-semibold">Order detail unavailable</div>
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/orders')}>
+            Back to orders
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   if (!order) {
     return (
-      <PageLayout>
-        <div style={LOADING_STYLE}>Order not found</div>
-      </PageLayout>
+      <div className="text-sm text-muted-foreground">Order not found.</div>
     );
   }
 
   const canCancel = isCancellable(order.status);
 
   return (
-    <PageLayout>
-      {/* Back button */}
-      <button onClick={() => navigate('/orders')} style={BACK_BUTTON_STYLE}>
-        ← Back to Orders
-      </button>
+    <div className="space-y-8">
+      <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/orders')}>
+        <ChevronLeft className="size-4" />
+        Back to orders
+      </Button>
 
-      {/* Order Header */}
-      <div style={HEADER_STYLE}>
-        <div>
-          <h1 style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.h2 }}>Order #{order.id}</h1>
-          <p style={{ margin: '0', ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-            Placed on {new Date(order.createdAt).toLocaleDateString('en-US', {
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+            Order detail
+          </div>
+          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Order #{order.id}</h1>
+          <p className="text-sm text-muted-foreground">
+            Created on{' '}
+            {new Date(order.createdAt).toLocaleDateString('en-US', {
               year: 'numeric',
-              month: 'long',
+              month: 'short',
               day: 'numeric',
             })}
           </p>
         </div>
-        <div
-          style={{
-            ...BADGE.base,
-            ...BADGE[getOrderStatusBadgeVariant(order.status)],
-          }}
-        >
-          {getOrderStatusLabel(order.status)}
-        </div>
-      </div>
-
-      {/* Cancellation Notice */}
-      {order.cancellation && (
-        <div
-          style={{
-            ...BADGE.error,
-            marginBottom: SPACING.xl,
-          }}
-        >
-          <p style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.label }}>Order Cancelled</p>
-          <p style={{ margin: '0', color: COLORS.error }}>
-            Cancelled by: {order.cancellation.cancelledBy}
-            {order.cancellation.reason && ` - ${order.cancellation.reason}`}
-          </p>
-          <p style={{ margin: `${SPACING.xs} 0 0 0`, ...TYPOGRAPHY.bodySmall }}>
-            {new Date(order.cancellation.cancelledAt || '').toLocaleString()}
-          </p>
-          {order.cancellation.refund && (
-            <p style={{ margin: `${SPACING.sm} 0 0 0`, color: COLORS.success, ...TYPOGRAPHY.bodySmall }}>
-              Refund: {order.cancellation.refund.amount.currency}{' '}
-              {order.cancellation.refund.amount.value} - {order.cancellation.refund.status}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Provider Info */}
-      <div
-        style={{
-          ...CARD.base,
-          backgroundColor: COLORS.bgPage,
-          marginBottom: SPACING.xl,
-        }}
-      >
-        <h3 style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.h3 }}>Seller</h3>
-        <p style={{ margin: '0', ...TYPOGRAPHY.label }}>{order.provider?.name}</p>
-        {order.provider?.verified && (
-          <span style={{ color: COLORS.success, ...TYPOGRAPHY.bodySmall }}>✓ Verified</span>
-        )}
-      </div>
-
-      {/* Order Items */}
-      <div style={{ marginBottom: SPACING.xl }}>
-        <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.lg }}>Items</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.lg }}>
-          {order.items.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                ...CARD.base,
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: SPACING.lg,
-              }}
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge variant="secondary" className={`rounded-full ${statusClass(order.status)}`}>
+            {getOrderStatusLabel(order.status)}
+          </Badge>
+          {canCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => void handleCancel()}
+              disabled={cancelling}
             >
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.label }}>{item.name}</p>
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-                  Quantity: {item.quantity}
-                </p>
-                {item.customizations && (
-                  <p style={{ margin: `${SPACING.xs} 0 0 0`, ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
-                    {Object.entries(item.customizations).map(([key, value]) => (
-                      <span key={key}>
-                        {key}: {value}
-                      </span>
-                    )).join(' | ')}
-                  </p>
-                )}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.label }}>
-                  {formatPrice(item.price.currency, (item.price.value ?? String(item.price.amount ?? 0)), item.quantity)}
-                </p>
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
-                  {item.price.currency} {item.price.value ?? item.price.amount} each
-                </p>
-              </div>
-            </div>
-          ))}
+              {cancelling ? 'Cancelling...' : 'Cancel order'}
+            </Button>
+          ) : null}
         </div>
-      </div>
+      </section>
 
-      {/* Quote/Pricing Breakdown */}
-      <div
-        style={{
-          ...CARD.base,
-          marginBottom: SPACING.xl,
-        }}
-      >
-        <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.lg }}>Order Summary</h2>
-        {order.quote?.breakup?.map((item, index) => (
-          <div
-            key={index}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: SPACING.sm,
-              ...TYPOGRAPHY.body,
-            }}
-          >
-            <span style={{ color: COLORS.textSecondary }}>{item.title}</span>
-            <span>{item.price.currency} {item.price.value ?? item.price.amount}</span>
-          </div>
-        ))}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginTop: SPACING.lg,
-            paddingTop: SPACING.md,
-            borderTop: `1px solid ${COLORS.border}`,
-            ...TYPOGRAPHY.label,
-          }}
-        >
-          <span>Total</span>
-          <span>
-            {order.quote?.total?.currency} {order.quote?.total?.value ?? order.quote?.total?.amount}
-          </span>
-        </div>
-      </div>
-
-      {/* Delivery Address */}
-      <div style={{ marginBottom: SPACING.xl }}>
-        <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.md }}>Delivery Address</h2>
-        <div style={{ color: COLORS.textPrimary, lineHeight: 1.6 }}>
-          <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.label }}>
-            {order.deliveryAddress?.line1}
-          </p>
-          {order.deliveryAddress?.line2 && (
-            <p style={{ margin: `0 0 ${SPACING.xs} 0` }}>{order.deliveryAddress.line2}</p>
-          )}
-          <p style={{ margin: `0 0 ${SPACING.xs} 0` }}>
-            {order.deliveryAddress?.city}, {order.deliveryAddress?.state}{' '}
-            {order.deliveryAddress?.postalCode}
-          </p>
-          <p style={{ margin: '0' }}>{order.deliveryAddress?.country}</p>
-        </div>
-      </div>
-
-      {/* Fulfillment & Tracking */}
-      <div style={{ marginBottom: SPACING.xl }}>
-        <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.md }}>
-          {order.fulfillment?.type === 'delivery' ? 'Delivery' : 'Fulfillment'} Status
-        </h2>
-        <div
-          style={{
-            ...CARD.base,
-            backgroundColor: COLORS.bgPage,
-          }}
-        >
-          <p style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.label }}>
-            Status: {getFulfillmentStatusLabel(order.fulfillment?.status ?? 'pending')}
-          </p>
-          {order.fulfillment?.estimatedTime && (
-            <p style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-              Est. Delivery:{' '}
-              {order.fulfillment.estimatedTime.start
-                ? new Date(order.fulfillment.estimatedTime.start).toLocaleString()
-                : 'TBD'}{' '}
-              -{' '}
-              {order.fulfillment.estimatedTime.end
-                ? new Date(order.fulfillment.estimatedTime.end).toLocaleString()
-                : 'TBD'}
-            </p>
-          )}
-          {order.fulfillment?.providerName && (
-            <p style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-              Provider: {order.fulfillment?.providerName}
-            </p>
-          )}
-
-          {/* Tracking Info */}
-          {order.fulfillment?.tracking && (
-            <div style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}` }}>
-              <p style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.label }}>Tracking</p>
-              {order.fulfillment?.tracking?.id && (
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-                  Tracking ID: {order.fulfillment?.tracking?.id}
-                </p>
-              )}
-              {order.fulfillment?.tracking?.statusMessage && (
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-                  {order.fulfillment?.tracking?.statusMessage}
-                </p>
-              )}
-              {order.fulfillment?.tracking?.url && (
-                <a
-                  href={order.fulfillment?.tracking?.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: COLORS.info,
-                    textDecoration: 'none',
-                    fontWeight: TYPOGRAPHY.label.fontWeight,
-                  }}
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle className="text-xl">Items</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {order.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-col gap-3 rounded-3xl border border-border/70 bg-background/70 px-4 py-4 sm:flex-row sm:items-start sm:justify-between"
                 >
-                  Track Package →
-                </a>
-              )}
-            </div>
-          )}
+                  <div className="space-y-1">
+                    <div className="font-medium">{item.name}</div>
+                    <div className="text-sm text-muted-foreground">Quantity: {item.quantity}</div>
+                    {item.customizations ? (
+                      <div className="text-sm text-muted-foreground">
+                        {Object.entries(item.customizations)
+                          .map(([key, value]) => `${key}: ${value}`)
+                          .join(' | ')}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="text-sm font-medium">
+                    {formatPrice(item.price.currency, item.price.value ?? String(item.price.amount ?? 0), item.quantity)}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
 
-          {/* Delivery Agent */}
-          {order.fulfillment?.agent && (
-            <div style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}` }}>
-              <p style={{ margin: `0 0 ${SPACING.sm} 0`, ...TYPOGRAPHY.label }}>Delivery Agent</p>
-              {order.fulfillment?.agent?.name && (
-                <p style={{ margin: `0 0 ${SPACING.xs} 0`, ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-                  Name: {order.fulfillment?.agent?.name}
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle className="text-xl">Pricing</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {order.quote?.breakup?.map((item, index) => (
+                <div key={`${item.title}-${index}`} className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{item.title}</span>
+                  <span>{item.price.currency} {item.price.value ?? item.price.amount}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-4 text-base font-semibold">
+                <span>Total</span>
+                <span>
+                  {order.quote?.total?.currency} {order.quote?.total?.value ?? order.quote?.total?.amount}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Truck className="size-5" />
+                Fulfillment
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Status</span>
+                <span className="font-medium">
+                  {order.fulfillment?.status
+                    ? getFulfillmentStatusLabel(order.fulfillment.status)
+                    : 'Pending'}
+                </span>
+              </div>
+              {order.fulfillment?.providerName ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Provider</span>
+                  <span>{order.fulfillment.providerName}</span>
+                </div>
+              ) : null}
+              {order.fulfillment?.tracking?.statusMessage ? (
+                <p className="rounded-3xl bg-muted/70 px-4 py-3 text-muted-foreground">
+                  {order.fulfillment.tracking.statusMessage}
                 </p>
-              )}
-              {order.fulfillment?.agent?.phone && (
-                <p style={{ margin: '0', ...TYPOGRAPHY.body, color: COLORS.textSecondary }}>
-                  Phone: {order.fulfillment?.agent?.phone}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+              ) : null}
+            </CardContent>
+          </Card>
 
-      {/* Payment Info */}
-      <div style={{ marginBottom: SPACING.xl }}>
-        <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.md }}>Payment</h2>
-        <div
-          style={{
-            ...CARD.base,
-            backgroundColor: COLORS.bgPage,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-            <span style={{ color: COLORS.textSecondary }}>Method</span>
-            <span style={{ ...TYPOGRAPHY.label, textTransform: 'capitalize' }}>
-              {order.payment?.type}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-            <span style={{ color: COLORS.textSecondary }}>Amount</span>
-            <span style={{ ...TYPOGRAPHY.label }}>
-              {order.payment?.amount?.currency} {order.payment?.amount?.value}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: COLORS.textSecondary }}>Status</span>
-            <span
-              style={{
-                ...TYPOGRAPHY.label,
-                color:
-                  order.payment?.status === 'completed'
-                    ? COLORS.success
-                    : order.payment?.status === 'failed'
-                      ? COLORS.error
-                      : COLORS.warning,
-              }}
-            >
-              {order.payment?.status}
-            </span>
-          </div>
-          {order.payment?.transactionId && (
-            <p style={{ margin: `${SPACING.xs} 0 0 0`, ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
-              Transaction ID: {order.payment?.transactionId}
-            </p>
-          )}
-          {order.payment?.completedAt && (
-            <p style={{ margin: `${SPACING.xs} 0 0 0`, ...TYPOGRAPHY.bodySmall, color: COLORS.textSecondary }}>
-              Completed: {new Date(order.payment?.completedAt || '').toLocaleString()}
-            </p>
-          )}
-        </div>
-      </div>
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <MapPin className="size-5" />
+                Delivery address
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <div>{order.deliveryAddress?.name}</div>
+              <div>{order.deliveryAddress?.line1 || order.deliveryAddress?.street}</div>
+              <div>
+                {[order.deliveryAddress?.city, order.deliveryAddress?.state, order.deliveryAddress?.postalCode || order.deliveryAddress?.pincode]
+                  .filter(Boolean)
+                  .join(', ')}
+              </div>
+              <div>{order.deliveryAddress?.country || 'IND'}</div>
+            </CardContent>
+          </Card>
 
-      {/* Documents */}
-      {order.documents && order.documents.length > 0 && (
-        <div style={{ marginBottom: SPACING.xl }}>
-          <h2 style={{ ...TYPOGRAPHY.h3, marginBottom: SPACING.md }}>Documents</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
-            {order.documents.map((doc, index) => (
-              <a
-                key={index}
-                href={doc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  ...CARD.base,
-                  backgroundColor: COLORS.bgPage,
-                  padding: SPACING.md,
-                  textDecoration: 'none',
-                  color: COLORS.info,
-                  fontWeight: TYPOGRAPHY.label.fontWeight,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  border: `1px solid ${COLORS.border}`,
-                  cursor: 'pointer',
-                }}
-              >
-                <span>{doc.label || doc.type}</span>
-                <span>↓</span>
-              </a>
-            ))}
-          </div>
+          {order.cancellation ? (
+            <Card className="border-rose-200 bg-rose-50 text-rose-900 shadow-none">
+              <CardHeader>
+                <CardTitle className="text-xl">Cancellation</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div>Cancelled by: {order.cancellation.cancelledBy}</div>
+                {order.cancellation.cancelledAt ? (
+                  <div>
+                    Cancelled at:{' '}
+                    {new Date(order.cancellation.cancelledAt).toLocaleString('en-US')}
+                  </div>
+                ) : null}
+                {order.cancellation.reason ? <div>{order.cancellation.reason}</div> : null}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
-      )}
-
-      {/* Cancel Button (for cancellable orders) */}
-      {canCancel && !order.cancellation && (
-        <div
-          style={{
-            ...BADGE.error,
-            padding: SPACING.xl,
-          }}
-        >
-          <p style={{ margin: `0 0 ${SPACING.md} 0`, color: COLORS.error, ...TYPOGRAPHY.label }}>
-            Need to cancel this order?
-          </p>
-          <button
-            onClick={handleCancel}
-            disabled={cancelling}
-            style={{
-              ...BUTTON.danger,
-              cursor: cancelling ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {cancelling ? 'Cancelling...' : 'Cancel Order'}
-          </button>
-        </div>
-      )}
-    </PageLayout>
+      </section>
+    </div>
   );
 }

@@ -1,4 +1,6 @@
-import { SPACING, TYPOGRAPHY, BUTTON, CARD, DRAMS } from '@portfolio-ui';
+import { Minus, Plus, Trash2 } from 'lucide-react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 export interface CartItemProps {
   item: {
@@ -10,7 +12,12 @@ export interface CartItemProps {
   disabled: boolean;
 }
 
-export function CartItem({ item, onUpdateQuantity, onRemove, disabled }: CartItemProps): JSX.Element {
+export function CartItem({
+  item,
+  onUpdateQuantity,
+  onRemove,
+  disabled,
+}: CartItemProps): JSX.Element {
   const handleQuantityChange = async (delta: number) => {
     const newQuantity = item.quantity + delta;
     if (newQuantity > 0) {
@@ -18,60 +25,53 @@ export function CartItem({ item, onUpdateQuantity, onRemove, disabled }: CartIte
     }
   };
 
-  const itemStyle = {
-    ...CARD.base,
-    display: 'flex',
-    gap: SPACING.lg,
-    alignItems: 'center',
-  };
-
-  const infoStyle = {
-    flex: 1,
-  };
-
-  const quantityStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  };
-
   return (
-    <div style={itemStyle}>
-      <div style={infoStyle}>
-        <h3 style={{ ...TYPOGRAPHY.body, margin: 0, color: DRAMS.textDark }}>
-          {item.item.descriptor?.name || item.item.id}
-        </h3>
-        <p style={{ ...TYPOGRAPHY.bodySmall, margin: `${SPACING.xs} 0 0 0`, color: DRAMS.textLight }}>
-          {item.item.price?.currency} {item.item.price?.value || '0'} × {item.quantity}
-        </p>
-      </div>
-      <div style={quantityStyle}>
-        <button
-          onClick={() => handleQuantityChange(-1)}
-          disabled={disabled}
-          style={{ ...BUTTON.secondary, padding: `${SPACING.xs} ${SPACING.md}` }}
-        >
-          -
-        </button>
-        <span style={{ ...TYPOGRAPHY.body, minWidth: '24px', textAlign: 'center' }}>
-          {item.quantity}
-        </span>
-        <button
-          onClick={() => handleQuantityChange(1)}
-          disabled={disabled}
-          style={{ ...BUTTON.secondary, padding: `${SPACING.xs} ${SPACING.md}` }}
-        >
-          +
-        </button>
-        <button
-          onClick={() => onRemove(item.item.id)}
-          disabled={disabled}
-          style={{ ...BUTTON.secondary, marginLeft: SPACING.md }}
-        >
-          Remove
-        </button>
-      </div>
-    </div>
+    <Card className="border-border/70 bg-card/90 shadow-sm">
+      <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="text-lg font-semibold tracking-tight">
+            {item.item.descriptor?.name || item.item.id}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {item.item.price?.currency} {item.item.price?.value || '0'} × {item.quantity}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="rounded-full"
+            onClick={() => void handleQuantityChange(-1)}
+            disabled={disabled}
+          >
+            <Minus className="size-4" />
+          </Button>
+          <div className="min-w-9 text-center text-sm font-semibold">{item.quantity}</div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="rounded-full"
+            onClick={() => void handleQuantityChange(1)}
+            disabled={disabled}
+          >
+            <Plus className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="rounded-full"
+            onClick={() => void onRemove(item.item.id)}
+            disabled={disabled}
+          >
+            <Trash2 className="size-4" />
+            Remove
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -82,59 +82,39 @@ export interface CartSummaryProps {
   checkoutDisabled: boolean;
 }
 
-export function CartSummary({ subtotal, currency, onCheckout, checkoutDisabled }: CartSummaryProps): JSX.Element {
-  const summaryStyle = {
-    ...CARD.base,
-    position: 'sticky' as const,
-    top: SPACING.xl,
-  };
-
-  const rowStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-    ...TYPOGRAPHY.body,
-  };
-
-  const totalStyle = {
-    ...CARD.base,
-    marginTop: SPACING.lg,
-    paddingTop: SPACING.lg,
-    borderTop: `1px solid ${DRAMS.grayTrack}`,
-  };
-
+export function CartSummary({
+  subtotal,
+  currency,
+  onCheckout,
+  checkoutDisabled,
+}: CartSummaryProps): JSX.Element {
   return (
-    <div style={summaryStyle}>
-      <h2 style={{ ...TYPOGRAPHY.h3, color: DRAMS.textDark, margin: `0 0 ${SPACING.lg} 0` }}>
-        Order Summary
-      </h2>
-      <div style={rowStyle}>
-        <span style={{ color: DRAMS.textLight }}>Subtotal</span>
-        <span style={{ ...TYPOGRAPHY.label, color: DRAMS.textDark }}>
-          {currency} {subtotal.toFixed(2)}
-        </span>
-      </div>
-      <div style={totalStyle}>
-        <div style={rowStyle}>
-          <span style={{ ...TYPOGRAPHY.h3, color: DRAMS.textDark }}>Total</span>
-          <span style={{ ...TYPOGRAPHY.h3, color: DRAMS.textDark }}>
+    <Card className="border-border/70 bg-card/90 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-xl">Order summary</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground">Subtotal</span>
+          <span className="font-medium">
             {currency} {subtotal.toFixed(2)}
           </span>
         </div>
-      </div>
-      <button
-        onClick={onCheckout}
-        disabled={checkoutDisabled}
-        style={{
-          ...BUTTON.primary,
-          width: '100%',
-          marginTop: SPACING.lg,
-          opacity: checkoutDisabled ? 0.5 : 1,
-          cursor: checkoutDisabled ? 'not-allowed' : 'pointer',
-        }}
-      >
-        Proceed to Checkout
-      </button>
-    </div>
+        <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-4 text-base font-semibold">
+          <span>Total</span>
+          <span>
+            {currency} {subtotal.toFixed(2)}
+          </span>
+        </div>
+        <Button
+          type="button"
+          onClick={onCheckout}
+          disabled={checkoutDisabled}
+          className="w-full rounded-full"
+        >
+          Proceed to checkout
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

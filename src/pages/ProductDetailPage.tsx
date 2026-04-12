@@ -1,91 +1,26 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ChevronLeft, ShoppingCart, Star, Store } from 'lucide-react';
 import { useApi, useCart } from '../hooks';
-import { RatingStars } from '../components';
-import { PageLayout, DRAMS, SPACING, TYPOGRAPHY, BUTTON, CARD, COLORS, GRID, DramsFlipCard, FlipCardFront, FlipCardBack, DramsAddButton } from '@portfolio-ui';
 import type { UCPItem } from '../types';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Separator } from '../components/ui/separator';
+import { Spinner } from '../components/ui/spinner';
 
-const BACK_BUTTON_STYLE = {
-  ...BUTTON.secondary,
-  marginBottom: SPACING.xl,
-};
+function renderRating(rating?: number) {
+  if (!rating) {
+    return null;
+  }
 
-const IMAGE_SECTION_STYLE = {
-  position: 'sticky' as const,
-  top: SPACING.xl,
-};
-
-const IMAGE_CARD_STYLE = {
-  ...CARD.base,
-  padding: 0,
-  overflow: 'hidden',
-};
-
-const IMAGE_STYLE = {
-  width: '100%',
-  height: '400px',
-  objectFit: 'cover' as const,
-  backgroundColor: DRAMS.grayTrack,
-};
-
-const DETAILS_SECTION_STYLE = {
-  display: 'flex',
-  flexDirection: 'column' as const,
-  gap: SPACING.xl,
-};
-
-const TITLE_STYLE = {
-  ...TYPOGRAPHY.h1,
-  color: DRAMS.textDark,
-  margin: 0,
-};
-
-const DESCRIPTION_STYLE = {
-  ...TYPOGRAPHY.body,
-  lineHeight: 1.6,
-  color: DRAMS.textLight,
-};
-
-const PRICE_SECTION_STYLE = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: SPACING.md,
-  marginBottom: SPACING.md,
-};
-
-const PRICE_STYLE = {
-  ...TYPOGRAPHY.h2,
-  color: DRAMS.orange,
-};
-
-const RATING_STYLE = {
-  marginBottom: SPACING.md,
-};
-
-const LOADING_STYLE = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: SPACING['3xl'],
-  color: DRAMS.textLight,
-  ...TYPOGRAPHY.body,
-};
-
-const ERROR_STYLE = {
-  ...CARD.base,
-  backgroundColor: '#fef2f2',
-  borderColor: '#fecaca',
-  color: COLORS.error,
-};
-
-const MESSAGE_STYLE = {
-  marginLeft: SPACING.md,
-  ...TYPOGRAPHY.bodySmall,
-};
-
-const SPECS_CARD_STYLE = {
-  ...CARD.base,
-};
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-sm font-medium text-muted-foreground">
+      <Star className="size-4 fill-current text-amber-500" />
+      {rating.toFixed(1)}
+    </div>
+  );
+}
 
 export function ProductDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -96,7 +31,7 @@ export function ProductDetailPage(): JSX.Element {
   const [cartMessage, setCartMessage] = useState('');
 
   useEffect(() => {
-    execute();
+    void execute();
   }, [execute]);
 
   async function handleAddToCart(): Promise<void> {
@@ -107,10 +42,10 @@ export function ProductDetailPage(): JSX.Element {
 
     try {
       await addToCart(data as any);
-      setCartMessage('Added to cart!');
+      setCartMessage('Added to cart.');
       setTimeout(() => setCartMessage(''), 2000);
     } catch {
-      setCartMessage('Failed to add to cart');
+      setCartMessage('Failed to add to cart.');
       setTimeout(() => setCartMessage(''), 2000);
     } finally {
       setAddingToCart(false);
@@ -119,127 +54,120 @@ export function ProductDetailPage(): JSX.Element {
 
   if (loading) {
     return (
-      <PageLayout>
-        <div style={LOADING_STYLE}>Loading product details...</div>
-      </PageLayout>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <Spinner className="size-6" />
+        <div className="text-sm text-muted-foreground">Loading product details...</div>
+      </div>
     );
   }
 
   if (error || !data) {
     return (
-      <PageLayout>
-        <div style={ERROR_STYLE}>
-          <p style={{ margin: 0, fontWeight: TYPOGRAPHY.label.fontWeight }}>Error</p>
-          <p style={{ margin: `${SPACING.xs} 0 ${SPACING.md} 0` }}>{error || 'Product not found'}</p>
-          <button
-            onClick={() => navigate(-1)}
-            style={BACK_BUTTON_STYLE}
-          >
-            Go Back
-          </button>
-        </div>
-      </PageLayout>
+      <Card className="border-border/70 bg-card/95 shadow-md">
+        <CardContent className="space-y-4 py-8">
+          <div className="text-lg font-semibold">Unable to load product detail</div>
+          <p className="text-sm text-muted-foreground">{error || 'Product not found.'}</p>
+          <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate(-1)}>
+            <ChevronLeft className="size-4" />
+            Back
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
-  const messageColor = cartMessage.includes('Failed') ? COLORS.error : DRAMS.orange;
-
-  // Build stats for flip card front
-  const stats = [
-    { label: 'Category', value: data.category || 'General' },
-    { label: 'Rating', value: data.rating ? `${data.rating.value}/5` : 'N/A' },
-  ];
-
-  // Build specs for flip card back
+  const title = data.name ?? data.descriptor?.name ?? 'Product';
+  const price = `${data.price?.currency} ${data.price?.value ?? data.price?.amount ?? '0'}`;
   const specs = [
-    { label: 'Category', value: data.category || 'General' },
-    { label: 'Seller', value: data.provider?.name || 'Unknown' },
-    { label: 'Stock', value: 'In Stock' },
+    ['Category', data.category || 'General'],
+    ['Seller', data.provider?.name || data._provider || 'Unknown seller'],
+    ['Stock', 'In stock'],
+    ['Route', 'Buyer detail flow'],
   ];
 
   return (
-    <PageLayout>
-      <button onClick={() => navigate(-1)} style={BACK_BUTTON_STYLE}>
-        ← Back
-      </button>
+    <div className="space-y-8">
+      <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate(-1)}>
+        <ChevronLeft className="size-4" />
+        Back
+      </Button>
 
-      <div style={GRID.twoColumns}>
-        {/* Left: Product Image */}
-        <div style={IMAGE_SECTION_STYLE}>
-          <div style={IMAGE_CARD_STYLE}>
-            {data.images?.[0] ? (
-              <img src={data.images[0].url} alt={data.name} style={IMAGE_STYLE} />
-            ) : (
-              <div style={{ ...IMAGE_STYLE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{
-                  width: '80px',
-                  height: '80px',
-                  background: `radial-gradient(50% 50% at 30% 30%, ${DRAMS.orangeHighlight} 0%, ${DRAMS.orange} 100%)`,
-                  borderRadius: '50%',
-                  boxShadow: `rgba(232, 61, 23, 0.4) 0px 0px 2px -1px inset, 0 4px 12px ${DRAMS.orange}33`,
-                }} />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Product Details */}
-        <div style={DETAILS_SECTION_STYLE}>
-          <h1 style={TITLE_STYLE}>{data.name}</h1>
-
-          {data.description && (
-            <p style={DESCRIPTION_STYLE}>{data.description}</p>
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-md">
+          {data.images?.[0]?.url ? (
+            <img src={data.images[0].url} alt={title} className="h-[420px] w-full object-cover" />
+          ) : (
+            <div className="flex h-[420px] items-center justify-center bg-muted">
+              <Store className="size-10 text-muted-foreground" />
+            </div>
           )}
+        </Card>
 
-          <div style={PRICE_SECTION_STYLE}>
-            <span style={PRICE_STYLE}>
-              {data.price?.currency} {data.price?.value ?? data.price?.amount}
-            </span>
-            {data.rating && (
-              <div style={RATING_STYLE}>
-                <RatingStars rating={data.rating.value ?? 0} />
+        <Card className="border-border/70 bg-card/95 shadow-md">
+          <CardHeader className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="rounded-full">
+                {data.category || 'General'}
+              </Badge>
+              <Badge variant="secondary" className="rounded-full">
+                {data.provider?.name || data._provider || 'Verified seller'}
+              </Badge>
+            </div>
+            <div className="space-y-3">
+              <CardTitle className="text-4xl tracking-tight sm:text-5xl">{title}</CardTitle>
+              <p className="text-base leading-7 text-muted-foreground">
+                {data.description || data.descriptor?.short_desc || 'Open the listing to review full product context before checkout.'}
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-3xl font-semibold tracking-tight text-primary">{price}</div>
+              {renderRating(data.rating?.value)}
+            </div>
+
+            <Separator />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {specs.map(([label, value]) => (
+                <div key={label} className="rounded-3xl bg-muted/70 px-4 py-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    {label}
+                  </div>
+                  <div className="mt-2 text-sm font-medium">{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Buyer note
               </div>
-            )}
-          </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Add the strongest candidate to cart, then continue into checkout once AadhaarChain
+                trust verification is ready for elevated actions.
+              </p>
+            </div>
 
-          {/* Flip Card for Specs */}
-          <div style={SPECS_CARD_STYLE}>
-            <DramsFlipCard
-              height={240}
-              front={
-                <FlipCardFront
-                  title="Product Details"
-                  stats={stats}
-                  hint="Click for specifications"
-                />
-              }
-              back={
-                <FlipCardBack
-                  specs={specs}
-                />
-              }
-            />
-          </div>
-
-          {/* Add to Cart Button */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <DramsAddButton
-              onClick={handleAddToCart}
-              disabled={addingToCart}
-              loading={addingToCart}
-              size="lg"
-              fullWidth
-            >
-              {addingToCart ? 'Adding...' : 'Add to Cart'}
-            </DramsAddButton>
-            {cartMessage && (
-              <span style={{ ...MESSAGE_STYLE, color: messageColor }}>
-                {cartMessage}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </PageLayout>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                className="rounded-full sm:min-w-44"
+                onClick={() => void handleAddToCart()}
+                disabled={addingToCart}
+              >
+                <ShoppingCart className="size-4" />
+                {addingToCart ? 'Adding...' : 'Add to cart'}
+              </Button>
+              {cartMessage ? (
+                <div className="text-sm font-medium text-muted-foreground">{cartMessage}</div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+    </div>
   );
 }
