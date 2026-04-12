@@ -1372,6 +1372,8 @@ export function AgentChat({
           <div className="flex items-end gap-3">
             <Textarea
               value={input}
+              aria-label="Buyer agent prompt"
+              name="buyer-agent-prompt"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -1382,7 +1384,14 @@ export function AgentChat({
               placeholder={placeholder}
               className="min-h-[80px]"
             />
-            <Button type="button" size="icon" className="h-12 w-12 shrink-0" onClick={() => void sendMessage()} disabled={!input.trim() || isLoading}>
+            <Button
+              type="button"
+              size="icon"
+              className="h-12 w-12 shrink-0"
+              onClick={() => void sendMessage()}
+              disabled={!input.trim() || isLoading}
+              aria-label={isLoading ? 'Buyer agent is responding' : 'Send buyer agent prompt'}
+            >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             </Button>
           </div>
