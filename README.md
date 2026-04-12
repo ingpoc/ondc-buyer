@@ -1,5 +1,7 @@
 # ONDC UCP Buyer Portal
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/openclaw-gurusharan/ondc-buyer)
+
 Buyer web application for ONDC UCP integration.
 
 ## Prerequisites
@@ -24,7 +26,7 @@ VITE_API_BASE_URL=http://localhost:3001
 ## Development
 
 ```bash
-# Start dev server (port 3000)
+# Start dev server (port 43102)
 pnpm dev
 
 # Type check

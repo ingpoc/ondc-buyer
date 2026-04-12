@@ -1,4 +1,14 @@
-import { Badge, Button, Card, Input, DramsDropdown } from '@portfolio-ui';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
@@ -28,6 +38,10 @@ function activeFilterCount(filters: SearchFilters) {
   ].filter(Boolean).length;
 }
 
+function numericValue(value?: number) {
+  return value === undefined ? '' : String(value);
+}
+
 export function FilterSidebar({ filters, onChange }: FilterSidebarProps): JSX.Element {
   const count = activeFilterCount(filters);
 
@@ -35,106 +49,99 @@ export function FilterSidebar({ filters, onChange }: FilterSidebarProps): JSX.El
     onChange({ ...filters, [key]: value });
   }
 
-  function formatValue(value: number | undefined): string {
-    return value?.toString() ?? '';
-  }
-
   return (
-    <Card className="space-y-6 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-2">
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]">
-            Refine
+    <Card className="gap-5 shadow-sm">
+      <CardHeader className="gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Refine
+            </div>
+            <CardTitle className="text-xl">Search filters</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Tighten the result set before you compare offers.
+            </p>
           </div>
-          <h3 className="text-xl font-bold tracking-[-0.03em] text-[var(--ui-text)]">
-            Search filters
-          </h3>
-          <p className="text-sm text-[var(--ui-text-secondary)]">
-            Tighten the result set before you compare offers.
-          </p>
+          <Badge variant={count ? 'default' : 'outline'} className="rounded-full">
+            {count ? `${count} active` : 'Base view'}
+          </Badge>
         </div>
-        <Badge tone={count ? 'warning' : 'neutral'}>
-          {count ? `${count} active` : 'Base view'}
-        </Badge>
-      </div>
-
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <label
-            htmlFor="max-price"
-            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
-          >
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <label className="space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Max price
-          </label>
+          </span>
           <Input
-            id="max-price"
+            name="maxPrice"
             type="number"
             min="0"
             step="0.01"
-            value={formatValue(filters.maxPrice)}
+            value={numericValue(filters.maxPrice)}
             onChange={(event) =>
               handleChange('maxPrice', event.target.value ? Number(event.target.value) : undefined)
             }
             placeholder="Any"
           />
-        </div>
+        </label>
 
-        <div className="space-y-2">
-          <label
-            htmlFor="min-rating"
-            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
-          >
+        <label className="space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Min rating
-          </label>
+          </span>
           <Input
-            id="min-rating"
+            name="minRating"
             type="number"
             min="0"
             max="5"
             step="0.1"
-            value={formatValue(filters.minRating)}
+            value={numericValue(filters.minRating)}
             onChange={(event) =>
               handleChange('minRating', event.target.value ? Number(event.target.value) : undefined)
             }
             placeholder="Any"
           />
-        </div>
+        </label>
 
-        <div className="space-y-2">
-          <label
-            htmlFor="sort-by"
-            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
-          >
+        <label className="space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Sort by
-          </label>
-          <DramsDropdown
-            id="sort-by"
-            options={SORT_OPTIONS}
+          </span>
+          <Select
+            name="sortBy"
             value={filters.sortBy ?? 'relevance'}
-            onChange={(value) => handleChange('sortBy', value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label
-            htmlFor="location"
-            className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ui-text-muted)]"
+            onValueChange={(value) => handleChange('sortBy', value)}
           >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Sort results" />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Delivery area
-          </label>
+          </span>
           <Input
-            id="location"
+            name="location"
             type="text"
             value={filters.location ?? ''}
             onChange={(event) => handleChange('location', event.target.value || undefined)}
             placeholder="City or PIN code"
           />
-        </div>
-      </div>
+        </label>
 
-      <Button type="button" variant="ghost" fullWidth onClick={() => onChange({})}>
-        Reset filters
-      </Button>
+        <Button type="button" variant="outline" className="w-full rounded-full" onClick={() => onChange({})}>
+          Reset filters
+        </Button>
+      </CardContent>
     </Card>
   );
 }

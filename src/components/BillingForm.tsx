@@ -1,80 +1,22 @@
-import { useState, useEffect, useCallback, useMemo, useId } from 'react';
-import { COLORS, SPACING, TYPOGRAPHY, BUTTON, CARD, BADGE, DRAMS, DramsInput } from '@portfolio-ui';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from './ui/field';
+import { Input } from './ui/input';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { updateLocalBuyer } from '../lib/localCart';
 
 const STORAGE_KEY = 'ondc-session-id';
 
-const FORM_CONTAINER_STYLE = {
-  ...CARD.base,
-  marginBottom: SPACING.xl,
-} as const;
-
-const LABEL_STYLE = {
-  display: 'block' as const,
-  marginBottom: SPACING.sm,
-  ...TYPOGRAPHY.label,
-  color: COLORS.textPrimary,
-};
-
-const SAVED_BADGE_STYLE = {
-  ...BADGE.success,
-  marginBottom: SPACING.lg,
-} as const;
-
 export interface BillingFormProps {
   session: any;
   onSave?: () => void | Promise<void>;
-}
-
-interface FormFieldProps {
-  id: string;
-  name: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
-  pattern?: string;
-  maxLength?: number;
-  onBlur?: () => void;
-  style?: React.CSSProperties;
-}
-
-function FormField({
-  id,
-  name,
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = 'text',
-  required = false,
-  pattern,
-  maxLength,
-  onBlur,
-  style,
-}: FormFieldProps): React.ReactElement {
-  return (
-    <div style={style}>
-      <label htmlFor={id} style={LABEL_STYLE}>
-        {label} {required && '*'}
-      </label>
-      <DramsInput
-        id={id}
-        name={name}
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        placeholder={placeholder}
-        required={required}
-        pattern={pattern}
-        maxLength={maxLength}
-      />
-    </div>
-  );
 }
 
 export function BillingForm({ session, onSave }: BillingFormProps): React.ReactElement {
@@ -95,7 +37,9 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
   }, [session]);
 
   const handleSave = useCallback(async () => {
-    if (!name.trim() || !email.trim() || !phone.trim()) return;
+    if (!name.trim() || !email.trim() || !phone.trim()) {
+      return;
+    }
 
     setSaving(true);
     setSaved(false);
@@ -109,38 +53,28 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
       if (COMMERCE_DEMO_MODE) {
         updateLocalBuyer(sessionId, { name, email, phone, taxId });
         setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+        setTimeout(() => setSaved(false), 2500);
         await onSave?.();
         return;
       }
 
-      const response = await fetch(buildCommerceUrl('/api/cart/buyer'), {
-        method: 'PUT',
+      const response = await fetch(buildCommerceUrl(`/api/cart/buyer/${sessionId}`), {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, name, email, phone, taxId }),
+        body: JSON.stringify({ name, email, phone, taxId }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to save: ${response.status}`);
+        throw new Error(`Billing save failed: ${response.status}`);
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-
-      // Notify parent component to refresh session
+      setTimeout(() => setSaved(false), 2500);
       await onSave?.();
-    } catch {
-      if (sessionId) {
-        updateLocalBuyer(sessionId, { name, email, phone, taxId });
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
-        await onSave?.();
-      }
     } finally {
       setSaving(false);
     }
-  }, [name, email, phone, taxId, onSave]);
+  }, [email, name, onSave, phone, taxId]);
 
   const isDirty = useMemo(
     () =>
@@ -148,91 +82,98 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
       email !== (session?.buyer?.email || '') ||
       phone !== (session?.buyer?.phone || '') ||
       taxId !== '',
-    [name, email, phone, taxId, session]
+    [email, name, phone, session, taxId],
   );
 
   const isValid = useMemo(
     () => name.trim() !== '' && email.trim() !== '' && phone.trim() !== '',
-    [name, email, phone]
+    [email, name, phone],
   );
 
   return (
-    <div style={FORM_CONTAINER_STYLE}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
-        <h2 style={{ ...TYPOGRAPHY.h3, color: DRAMS.textDark, margin: 0 }}>Billing Information</h2>
-        {isDirty && (
-          <button
+    <Card className="border-border/70 bg-card/90">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Buyer details
+          </div>
+          <CardTitle className="text-xl">Billing information</CardTitle>
+        </div>
+        {isDirty ? (
+          <Button
             type="button"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={saving || !isValid}
-            style={{
-              ...BUTTON.primary,
-              opacity: saving || !isValid ? 0.5 : 1,
-              cursor: saving || !isValid ? 'not-allowed' : 'pointer',
-            }}
+            className="rounded-full"
           >
             {saving ? 'Saving...' : 'Save'}
-          </button>
-        )}
-      </div>
+          </Button>
+        ) : null}
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {saved ? (
+          <Badge variant="secondary" className="rounded-full bg-lime-100 text-lime-900">
+            Information saved
+          </Badge>
+        ) : null}
 
-      {saved && (
-        <div style={SAVED_BADGE_STYLE}>
-          ✓ Information saved
-        </div>
-      )}
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${fieldPrefix}-full-name`}>Full name *</FieldLabel>
+            <Input
+              id={`${fieldPrefix}-full-name`}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={() => void handleSave()}
+              placeholder="John Doe"
+              required
+            />
+          </Field>
 
-      <div style={{ display: 'grid', gap: SPACING.lg }}>
-        <FormField
-          id={`${fieldPrefix}-full-name`}
-          name="buyerName"
-          label="Full Name"
-          value={name}
-          onChange={setName}
-          onBlur={handleSave}
-          placeholder="John Doe"
-          required
-        />
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor={`${fieldPrefix}-email`}>Email *</FieldLabel>
+              <Input
+                id={`${fieldPrefix}-email`}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                onBlur={() => void handleSave()}
+                placeholder="john@example.com"
+                required
+              />
+            </Field>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.lg }}>
-          <FormField
-            id={`${fieldPrefix}-email`}
-            name="buyerEmail"
-            label="Email"
-            value={email}
-            onChange={setEmail}
-            onBlur={handleSave}
-            placeholder="john@example.com"
-            type="email"
-            required
-          />
-          <FormField
-            id={`${fieldPrefix}-phone`}
-            name="buyerPhone"
-            label="Phone"
-            value={phone}
-            onChange={setPhone}
-            onBlur={handleSave}
-            placeholder="+919876543210"
-            type="tel"
-            required
-          />
-        </div>
+            <Field>
+              <FieldLabel htmlFor={`${fieldPrefix}-phone`}>Phone *</FieldLabel>
+              <Input
+                id={`${fieldPrefix}-phone`}
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                onBlur={() => void handleSave()}
+                placeholder="+919876543210"
+                required
+              />
+            </Field>
+          </div>
 
-        <FormField
-          id={`${fieldPrefix}-tax-id`}
-          name="buyerTaxId"
-          label="GSTIN (Optional)"
-          value={taxId}
-          onChange={(value) => setTaxId(value.toUpperCase())}
-          onBlur={handleSave}
-          placeholder="29ABCDE1234F1Z5"
-          maxLength={15}
-        />
-        <p style={{ ...TYPOGRAPHY.bodySmall, color: COLORS.textMuted, marginTop: `-${SPACING.md}` }}>
-          For business purchases and GST invoices
-        </p>
-      </div>
-    </div>
+          <Field>
+            <FieldLabel htmlFor={`${fieldPrefix}-tax-id`}>GSTIN</FieldLabel>
+            <Input
+              id={`${fieldPrefix}-tax-id`}
+              value={taxId}
+              onChange={(event) => setTaxId(event.target.value.toUpperCase())}
+              onBlur={() => void handleSave()}
+              placeholder="29ABCDE1234F1Z5"
+              maxLength={15}
+            />
+            <FieldDescription>
+              Optional, used for business purchases and GST invoices.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,34 +1,17 @@
 import { useNavigate } from 'react-router-dom';
+import { ShoppingBag } from 'lucide-react';
 import { useCart } from '../hooks';
 import { CartItem, CartSummary } from '../components/CartComponents';
-import { PageLayout, PageHeader, DRAMS, SPACING, TYPOGRAPHY, BUTTON, CARD, PILL_BUTTON, GRID } from '@portfolio-ui';
-
-const GRID_LAYOUT_STYLE = {
-  ...GRID.twoColumnsWide,
-  marginBottom: SPACING.xl,
-};
-
-const ITEMS_SECTION_STYLE = {
-  display: 'flex',
-  flexDirection: 'column' as const,
-  gap: SPACING.lg,
-};
-
-const SUMMARY_SECTION_STYLE = {
-  position: 'sticky' as const,
-  top: SPACING.xl,
-  alignSelf: 'start' as const,
-};
-
-const EMPTY_STATE_STYLE = {
-  ...CARD.base,
-  textAlign: 'center' as const,
-  padding: `${SPACING['3xl']} ${SPACING.xl}`,
-};
-
-const FOOTER_STYLE = {
-  textAlign: 'center' as const,
-};
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '../components/ui/empty';
+import { Spinner } from '../components/ui/spinner';
 
 export function CartPage(): JSX.Element {
   const navigate = useNavigate();
@@ -49,41 +32,43 @@ export function CartPage(): JSX.Element {
 
   if (loading && !session) {
     return (
-      <PageLayout>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: SPACING['3xl'] }}>
-          Loading cart...
-        </div>
-      </PageLayout>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <Spinner className="size-6" />
+        <div className="text-sm text-muted-foreground">Loading cart...</div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <PageLayout>
-        <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-          <p style={{ margin: 0, ...TYPOGRAPHY.label }}>Error</p>
-          <p style={{ margin: `${SPACING.xs} 0 0 0` }}>{error}</p>
-          <button onClick={clearError} style={BUTTON.secondary}>
+      <Card className="border-border/70 bg-card/95 shadow-md">
+        <CardContent className="space-y-4 py-8 text-center">
+          <div className="text-lg font-semibold">Cart error</div>
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button type="button" variant="outline" className="rounded-full" onClick={clearError}>
             Dismiss
-          </button>
-        </div>
-      </PageLayout>
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   if (!session || itemCount === 0) {
     return (
-      <PageLayout>
-        <div style={EMPTY_STATE_STYLE}>
-          <h2 style={{ ...TYPOGRAPHY.h2, color: DRAMS.textDark, margin: `0 0 ${SPACING.md} 0` }}>Your Cart is Empty</h2>
-          <p style={{ ...TYPOGRAPHY.body, color: DRAMS.textLight, margin: `0 0 ${SPACING.xl} 0` }}>
-            Add some items to get started!
-          </p>
-          <button onClick={() => navigate('/search')} style={PILL_BUTTON.orange}>
-            Start Shopping
-          </button>
-        </div>
-      </PageLayout>
+      <Empty className="border-border/70 bg-card/90">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ShoppingBag className="size-5" />
+          </EmptyMedia>
+          <EmptyTitle>Your cart is empty</EmptyTitle>
+          <EmptyDescription>
+            Add some items to get started with the buyer checkout flow.
+          </EmptyDescription>
+        </EmptyHeader>
+        <Button type="button" className="rounded-full" onClick={() => navigate('/search')}>
+          Start shopping
+        </Button>
+      </Empty>
     );
   }
 
@@ -91,14 +76,19 @@ export function CartPage(): JSX.Element {
   const itemLabel = itemCount === 1 ? 'item' : 'items';
 
   return (
-    <PageLayout>
-      <PageHeader
-        title="Shopping Cart"
-        subtitle={`${itemCount} ${itemLabel} in your cart`}
-      />
+    <div className="space-y-8">
+      <section className="space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          Cart
+        </div>
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Shopping cart</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">
+          {itemCount} {itemLabel} ready for trust-aware checkout.
+        </p>
+      </section>
 
-      <div style={GRID_LAYOUT_STYLE}>
-        <div style={ITEMS_SECTION_STYLE}>
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
           {session.items.map((item: any) => (
             <CartItem
               key={item.item.id}
@@ -110,21 +100,25 @@ export function CartPage(): JSX.Element {
           ))}
         </div>
 
-        <div style={SUMMARY_SECTION_STYLE}>
+        <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <CartSummary
             subtotal={subtotal}
             currency={currency}
             onCheckout={handleCheckout}
             checkoutDisabled={loading || itemCount === 0}
           />
+          <Card className="border-border/70 bg-card/90 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Need more items?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button type="button" variant="outline" className="w-full rounded-full" onClick={() => navigate('/search')}>
+                Continue shopping
+              </Button>
+            </CardContent>
+          </Card>
         </div>
-      </div>
-
-      <div style={FOOTER_STYLE}>
-        <button onClick={() => navigate('/search')} style={BUTTON.secondary}>
-          ← Continue Shopping
-        </button>
-      </div>
-    </PageLayout>
+      </section>
+    </div>
   );
 }
