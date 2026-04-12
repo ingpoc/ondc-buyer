@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, MapPin, Truck } from 'lucide-react';
 import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { cancelDemoOrder, getDemoOrder } from '../lib/localOrders';
+import { createLocalSupportCase, listSupportCases } from '../lib/localSupportCases';
 import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
+import type { BuyerSupportCase } from '../types/agent';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -71,6 +73,9 @@ export function OrderDetailPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [supportCases, setSupportCases] = useState<BuyerSupportCase[]>([]);
+  const [issueType, setIssueType] = useState<BuyerSupportCase['issue_type']>('fulfillment');
+  const [issueDescription, setIssueDescription] = useState('');
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -86,6 +91,7 @@ export function OrderDetailPage(): JSX.Element {
           setError('Order not found');
         } else {
           setOrder(data);
+          setSupportCases(listSupportCases(data.id));
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load order');
@@ -128,6 +134,22 @@ export function OrderDetailPage(): JSX.Element {
     } finally {
       setCancelling(false);
     }
+  }
+
+  function handleCreateIssue() {
+    if (!order || !issueDescription.trim()) {
+      return;
+    }
+
+    const supportCase = createLocalSupportCase({
+      order_id: order.id,
+      issue_type: issueType,
+      description: issueDescription.trim(),
+      evidence_links: [],
+    });
+
+    setSupportCases((current) => [supportCase, ...current]);
+    setIssueDescription('');
   }
 
   if (loading) {
@@ -251,6 +273,105 @@ export function OrderDetailPage(): JSX.Element {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="border-border/70 bg-card/90">
+            <CardHeader>
+              <CardTitle className="text-xl">Support & grievance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium text-foreground">Issue type</span>
+                  <select
+                    value={issueType}
+                    onChange={(event) =>
+                      setIssueType(event.target.value as BuyerSupportCase['issue_type'])
+                    }
+                    className="w-full rounded-2xl border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="fulfillment">Fulfillment</option>
+                    <option value="cancellation">Cancellation</option>
+                    <option value="post_delivery">Post delivery</option>
+                    <option value="payment">Payment</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium text-foreground">Describe the issue</span>
+                  <textarea
+                    value={issueDescription}
+                    onChange={(event) => setIssueDescription(event.target.value)}
+                    placeholder="Describe the problem for this order."
+                    className="min-h-28 w-full rounded-2xl border border-border/70 bg-background px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={handleCreateIssue}
+                  disabled={!issueDescription.trim()}
+                >
+                  Create support case
+                </Button>
+              </div>
+
+              {supportCases.length > 0 ? (
+                <div className="space-y-3">
+                  {supportCases.map((supportCase) => (
+                    <div
+                      key={supportCase.case_id}
+                      className="rounded-3xl border border-border/70 bg-background/70 px-4 py-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">{supportCase.network_case_id}</div>
+                          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                            {supportCase.issue_type} ·{' '}
+                            {new Date(supportCase.created_at).toLocaleString('en-US')}
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="rounded-full">
+                          {supportCase.status}
+                        </Badge>
+                      </div>
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {supportCase.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No support cases yet for this order.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {order.documents?.length ? (
+            <Card className="border-border/70 bg-card/90">
+              <CardHeader>
+                <CardTitle className="text-xl">Documents</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {order.documents.map((document, index) => (
+                  <a
+                    key={`${document.url}-${index}`}
+                    href={document.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-3xl border border-border/70 bg-background/70 px-4 py-4 text-sm font-medium text-foreground transition hover:border-primary/40 hover:bg-primary/5"
+                  >
+                    <span>{document.label || document.type || 'Document'}</span>
+                    <span className="text-muted-foreground">Open</span>
+                  </a>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
         <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
