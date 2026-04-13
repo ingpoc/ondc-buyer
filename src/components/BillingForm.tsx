@@ -112,7 +112,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
       </CardHeader>
       <CardContent className="space-y-6">
         {saved ? (
-          <Badge variant="secondary" className="rounded-full bg-lime-100 text-lime-900">
+          <Badge variant="secondary" className="rounded-full bg-primary/15 text-primary">
             Information saved
           </Badge>
         ) : null}

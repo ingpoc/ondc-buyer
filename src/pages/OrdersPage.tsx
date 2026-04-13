@@ -45,9 +45,9 @@ function getStatusLabel(status: UCPOrderStatus): string {
 
 function statusBadgeClass(status: UCPOrderStatus) {
   if (status === 'cancelled' || status === 'returned') return 'bg-rose-100 text-rose-800';
-  if (status === 'delivered') return 'bg-lime-100 text-lime-900';
+  if (status === 'delivered') return 'bg-primary/15 text-primary';
   if (isPendingStatus(status)) return 'bg-secondary text-secondary-foreground';
-  if (isActiveStatus(status)) return 'bg-lime-50 text-lime-900';
+  if (isActiveStatus(status)) return 'bg-primary/10 text-primary';
   return 'bg-muted text-muted-foreground';
 }
 

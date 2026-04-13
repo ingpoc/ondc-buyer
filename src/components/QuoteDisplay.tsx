@@ -108,7 +108,7 @@ export function QuoteDisplay({ quote, currency }: QuoteDisplayProps): JSX.Elemen
             </div>
           ) : null}
           {hasDiscount ? (
-            <div className="flex items-center justify-between gap-3 text-lime-800">
+            <div className="flex items-center justify-between gap-3 text-primary">
               <span>Discount</span>
               <span>-{currency} {formatPrice(quote.discount)}</span>
             </div>
@@ -125,7 +125,7 @@ export function QuoteDisplay({ quote, currency }: QuoteDisplayProps): JSX.Elemen
         </div>
 
         {hasDiscount ? (
-          <div className="rounded-3xl bg-lime-50 px-4 py-3 text-sm text-lime-900">
+          <div className="rounded-3xl bg-primary/10 px-4 py-3 text-sm text-primary">
             You save {currency} {formatPrice(quote.discount)} on this order.
           </div>
         ) : null}

@@ -56,9 +56,9 @@ function getFulfillmentStatusLabel(status: UCPFulfillmentStatus): string {
 
 function statusClass(status: UCPOrderStatus) {
   if (status === 'cancelled' || status === 'returned') return 'bg-rose-100 text-rose-800';
-  if (status === 'delivered') return 'bg-lime-100 text-lime-900';
+  if (status === 'delivered') return 'bg-primary/15 text-primary';
   if (status === 'created' || status === 'accepted') return 'bg-secondary text-secondary-foreground';
-  return 'bg-lime-50 text-lime-900';
+  return 'bg-primary/10 text-primary';
 }
 
 function formatPrice(currency: string, value: string | undefined, quantity = 1) {

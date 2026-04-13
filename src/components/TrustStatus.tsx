@@ -33,8 +33,8 @@ const STATE_META: Record<
   },
   verified: {
     label: 'Verified',
-    chipClassName: 'bg-lime-100 text-lime-900',
-    panelClassName: 'border-lime-200 bg-lime-50/90 text-lime-950',
+    chipClassName: 'bg-primary/15 text-primary',
+    panelClassName: 'border-primary/20 bg-primary/10 text-foreground',
     icon: ShieldCheck,
   },
   manual_review: {
