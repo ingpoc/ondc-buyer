@@ -274,7 +274,7 @@ export function CheckoutPage() {
       />
 
       {submitError ? (
-        <Card className="border-amber-200 bg-amber-50 text-amber-900 shadow-none">
+        <Card className="border-border/70 bg-secondary/80 text-foreground shadow-none">
           <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm leading-6">{submitError}</p>
             <Button type="button" variant="outline" className="rounded-full" onClick={() => setSubmitError(null)}>

@@ -16,7 +16,7 @@ function renderRating(rating?: number) {
 
   return (
     <div className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-sm font-medium text-muted-foreground">
-      <Star className="size-4 fill-current text-amber-500" />
+      <Star className="size-4 fill-current text-primary" />
       {rating.toFixed(1)}
     </div>
   );

@@ -110,9 +110,9 @@ function describeAction(action: BuyerAgentAction) {
 }
 
 function actionBadgeClass(action: BuyerAgentAction) {
-  if (action.type === 'trust_required') return 'bg-amber-100 text-amber-800';
+  if (action.type === 'trust_required') return 'bg-secondary text-secondary-foreground';
   if (action.type === 'unsupported') return 'bg-rose-100 text-rose-800';
-  return 'bg-lime-50 text-lime-900';
+  return 'bg-primary/10 text-primary';
 }
 
 async function processBuyerStream(
@@ -236,7 +236,7 @@ function NoticeCard({
 }) {
   const toneClass =
     tone === 'warning'
-      ? 'border-amber-200 bg-amber-50 text-amber-900'
+      ? 'border-border/70 bg-secondary/80 text-foreground'
       : tone === 'error'
         ? 'border-rose-200 bg-rose-50 text-rose-900'
         : 'border-blue-200 bg-blue-50 text-blue-900';
@@ -477,7 +477,7 @@ export function AgentChatPage(): JSX.Element {
           variant="secondary"
           className={
             runtime.runtime_available
-              ? 'rounded-full bg-lime-100 text-lime-900'
+              ? 'rounded-full bg-primary/15 text-primary'
               : 'rounded-full bg-secondary text-secondary-foreground'
           }
         >
@@ -487,7 +487,7 @@ export function AgentChatPage(): JSX.Element {
           variant="secondary"
           className={
             trust.state === 'verified'
-              ? 'rounded-full bg-lime-100 text-lime-900'
+              ? 'rounded-full bg-primary/15 text-primary'
               : 'rounded-full bg-secondary text-secondary-foreground'
           }
         >
