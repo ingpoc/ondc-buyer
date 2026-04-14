@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AgentRuntimeSnapshot } from '@/types/agent';
+import { buildAgentControlPlaneUrl } from '@/lib/agentControlPlane';
 
 const DEFAULT_RUNTIME: AgentRuntimeSnapshot = {
   app_id: 'ondc-buyer',
@@ -87,7 +88,7 @@ export function useAgentRuntime(subjectId?: string | null, walletAddress?: strin
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('/api/agent/runtime?app=ondc-buyer', {
+        const response = await fetch(buildAgentControlPlaneUrl('/api/agent/runtime?app=ondc-buyer'), {
           headers: {
             'X-User-Id': subjectId,
             ...(walletAddress ? { 'X-Wallet-Address': walletAddress } : {}),

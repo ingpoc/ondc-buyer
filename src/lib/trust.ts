@@ -1,3 +1,5 @@
+import { TRUST_API_URL } from './identityUrls';
+
 export type PortfolioTrustState =
   | 'no_identity'
   | 'identity_present_unverified'
@@ -31,8 +33,6 @@ export interface TrustSnapshot {
   reason: string | null;
   trust: TrustSurface | null;
 }
-
-const TRUST_API_URL = import.meta.env.VITE_TRUST_API_URL || 'http://127.0.0.1:43101';
 
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { credentials: 'include' });

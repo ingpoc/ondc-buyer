@@ -10,6 +10,7 @@ import {
   buildBuyerAgentSnapshot,
   extractBuyerAgentEnvelope,
 } from '../lib/agentBuyerState';
+import { buildAgentControlPlaneUrl } from '../lib/agentControlPlane';
 import type { BuyerAgentAction, BuyerAgentSnapshot } from '../types/agent';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -29,7 +30,7 @@ interface PersistedBuyerAgentUiState {
   trustBlockReason: string | null;
 }
 
-const SESSION_STORAGE_KEY = 'portfolio-agent-session-id:/api/agent/buyer';
+const SESSION_STORAGE_KEY = `portfolio-agent-session-id:${buildAgentControlPlaneUrl('/api/agent/buyer')}`;
 const BUYER_AGENT_UI_STATE_KEY = 'ondc-buyer-agent-ui-state';
 
 function getStoredSessionId() {
@@ -338,7 +339,7 @@ export function AgentChatPage(): JSX.Element {
     setTrustBlockReason(null);
 
     try {
-      const response = await fetch('/api/agent/buyer', {
+      const response = await fetch(buildAgentControlPlaneUrl('/api/agent/buyer'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

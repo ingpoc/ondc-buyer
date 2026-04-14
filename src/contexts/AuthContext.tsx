@@ -1,9 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { SSOUser } from '@/lib/api';
-import { normalizeLoopbackUrl } from '@/lib/loopback';
+import { IDENTITY_URL, IDENTITY_WEB_URL } from '@/lib/identityUrls';
 
-const IDENTITY_URL = normalizeLoopbackUrl(import.meta.env.VITE_IDENTITY_URL || 'http://127.0.0.1:43101');
-const IDENTITY_WEB_URL = normalizeLoopbackUrl(import.meta.env.VITE_IDENTITY_WEB_URL || 'http://127.0.0.1:43100');
 const LOCAL_IDENTITY_AUTH_ENABLED = import.meta.env.VITE_IDENTITY_AUTH_ENABLED === 'true';
 
 export type { SSOUser };
