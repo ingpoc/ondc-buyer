@@ -21,7 +21,7 @@ export interface TrustSurface {
   did: string;
   verification_bitmap: number;
   updated_at: string;
-  trust_state: Exclude<PortfolioTrustState, 'no_identity'>;
+  trust_state: PortfolioTrustState;
   high_trust_eligible: boolean;
   state_reason?: string | null;
   verifications: TrustVerificationSummary[];
