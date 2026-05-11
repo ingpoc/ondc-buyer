@@ -4,6 +4,7 @@ import {
   buildBuyerAgentSnapshot,
   extractBuyerAgentEnvelope,
 } from './agentBuyerState';
+import type { PortfolioTrustState } from './trust';
 import type { UCPItem, UCPSession } from '../types';
 
 const MUSTARD_OIL: UCPItem = {
@@ -40,6 +41,14 @@ const CART_SESSION: UCPSession = {
     country: 'IND',
   },
 };
+
+const TRUST_STATES: PortfolioTrustState[] = [
+  'no_identity',
+  'identity_present_unverified',
+  'verified',
+  'manual_review',
+  'revoked_or_blocked',
+];
 
 describe('agentBuyerState', () => {
   it('extracts a buyer envelope from json content', () => {
@@ -108,5 +117,38 @@ describe('agentBuyerState', () => {
     expect(result.itemsToAdd).toHaveLength(1);
     expect(result.navigateTo).toBe('/checkout');
     expect(result.trustBlockReason).toBeNull();
+  });
+
+  it.each(TRUST_STATES)('applies checkout trust policy for %s', (trustState) => {
+    const snapshot = buildBuyerAgentSnapshot(
+      { path: '/agent', search: '' },
+      trustState,
+      CART_SESSION,
+      [MUSTARD_OIL],
+      [],
+    );
+
+    const result = applyBuyerAgentEnvelope(
+      {
+        summary: 'Try to add item and continue to checkout.',
+        actions: [
+          { type: 'cart_add', item_id: 'mustard-oil-1l', quantity: 1, reason: 'Save selected item.' },
+          { type: 'navigate', path: '/checkout', reason: 'Checkout requested.' },
+        ],
+      },
+      snapshot,
+      trustState,
+    );
+
+    expect(result.itemsToAdd).toHaveLength(1);
+
+    if (trustState === 'verified') {
+      expect(result.navigateTo).toBe('/checkout');
+      expect(result.trustBlockReason).toBeNull();
+      return;
+    }
+
+    expect(result.navigateTo).toBeNull();
+    expect(result.trustBlockReason).toContain('verified');
   });
 });
