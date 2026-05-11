@@ -1,4 +1,6 @@
 import type { BuyerSupportCase } from '@/types/agent';
+import type { PortfolioTrustState } from './trust';
+import { assertCanExecuteProtectedBuyerAction } from './buyerActionPolicy';
 
 const LOCAL_SUPPORT_CASES_STORAGE_KEY = 'ondc-local-support-cases';
 
@@ -59,4 +61,12 @@ export function createLocalSupportCase(
   };
 
   return upsertSupportCase(supportCase);
+}
+
+export function createVerifiedLocalSupportCase(
+  partialCase: Omit<BuyerSupportCase, 'case_id' | 'network_case_id' | 'created_at' | 'updated_at' | 'status'>,
+  trustState: PortfolioTrustState,
+): BuyerSupportCase {
+  assertCanExecuteProtectedBuyerAction(trustState);
+  return createLocalSupportCase(partialCase);
 }

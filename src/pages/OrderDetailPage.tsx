@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { ChevronLeft, MapPin, Truck } from 'lucide-react';
+import { TrustNotice } from '../components/TrustStatus';
+import { useTrustState } from '../hooks';
 import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
-import { cancelDemoOrder, getDemoOrder } from '../lib/localOrders';
-import { createLocalSupportCase, listSupportCases } from '../lib/localSupportCases';
+import { cancelVerifiedDemoOrder, getDemoOrder } from '../lib/localOrders';
+import { createVerifiedLocalSupportCase, listSupportCases } from '../lib/localSupportCases';
 import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
 import { Badge } from '../components/ui/badge';
@@ -69,6 +72,8 @@ function formatPrice(currency: string, value: string | undefined, quantity = 1) 
 export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { publicKey } = useWallet();
+  const trust = useTrustState(publicKey?.toBase58() ?? null);
   const [order, setOrder] = useState<UCPOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +110,10 @@ export function OrderDetailPage(): JSX.Element {
 
   async function handleCancel() {
     if (!order || !id) return;
+    if (trust.state !== 'verified') {
+      setError(trust.reason || 'Verified buyer trust is required before cancelling orders.');
+      return;
+    }
 
     if (!confirm('Are you sure you want to cancel this order?')) {
       return;
@@ -113,7 +122,7 @@ export function OrderDetailPage(): JSX.Element {
     setCancelling(true);
     try {
       if (COMMERCE_DEMO_MODE) {
-        const updatedOrder = cancelDemoOrder(id);
+        const updatedOrder = cancelVerifiedDemoOrder(id, trust.state);
         if (!updatedOrder) {
           throw new Error('Order not found');
         }
@@ -140,13 +149,20 @@ export function OrderDetailPage(): JSX.Element {
     if (!order || !issueDescription.trim()) {
       return;
     }
+    if (trust.state !== 'verified') {
+      setError(trust.reason || 'Verified buyer trust is required before creating support cases.');
+      return;
+    }
 
-    const supportCase = createLocalSupportCase({
-      order_id: order.id,
-      issue_type: issueType,
-      description: issueDescription.trim(),
-      evidence_links: [],
-    });
+    const supportCase = createVerifiedLocalSupportCase(
+      {
+        order_id: order.id,
+        issue_type: issueType,
+        description: issueDescription.trim(),
+        evidence_links: [],
+      },
+      trust.state,
+    );
 
     setSupportCases((current) => [supportCase, ...current]);
     setIssueDescription('');
@@ -182,6 +198,7 @@ export function OrderDetailPage(): JSX.Element {
   }
 
   const canCancel = isCancellable(order.status);
+  const protectedActionsBlocked = !trust.loading && trust.state !== 'verified';
 
   return (
     <div className="space-y-8">
@@ -215,13 +232,21 @@ export function OrderDetailPage(): JSX.Element {
               variant="outline"
               className="rounded-full"
               onClick={() => void handleCancel()}
-              disabled={cancelling}
+              disabled={cancelling || protectedActionsBlocked}
             >
               {cancelling ? 'Cancelling...' : 'Cancel order'}
             </Button>
           ) : null}
         </div>
       </section>
+
+      <TrustNotice
+        state={trust.state}
+        loading={trust.loading}
+        error={trust.error}
+        reason={trust.reason}
+        actionLabel="Resolve trust in AadhaarChain"
+      />
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
@@ -312,7 +337,7 @@ export function OrderDetailPage(): JSX.Element {
                   variant="outline"
                   className="rounded-full"
                   onClick={handleCreateIssue}
-                  disabled={!issueDescription.trim()}
+                  disabled={!issueDescription.trim() || protectedActionsBlocked}
                 >
                   Create support case
                 </Button>

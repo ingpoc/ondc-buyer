@@ -1,4 +1,6 @@
 import type { UCPAddress, UCPOrder, UCPQuote, UCPSession } from '../types';
+import type { PortfolioTrustState } from './trust';
+import { assertCanExecuteProtectedBuyerAction } from './buyerActionPolicy';
 import { clearLocalSession } from './localCart';
 
 const LOCAL_ORDER_STORAGE_KEY = 'ondc-local-demo-orders';
@@ -127,6 +129,17 @@ export function createDemoOrder(
   return order;
 }
 
+export function createVerifiedDemoOrder(
+  sessionId: string,
+  session: UCPSession,
+  quote: UCPQuote,
+  deliveryAddress: UCPAddress,
+  trustState: PortfolioTrustState,
+): UCPOrder {
+  assertCanExecuteProtectedBuyerAction(trustState);
+  return createDemoOrder(sessionId, session, quote, deliveryAddress);
+}
+
 export function cancelDemoOrder(orderId: string): UCPOrder | null {
   const orders = readOrderStore();
   const index = orders.findIndex((order) => order.id === orderId);
@@ -172,4 +185,12 @@ export function cancelDemoOrder(orderId: string): UCPOrder | null {
   orders[index] = updatedOrder;
   writeOrderStore(orders);
   return updatedOrder;
+}
+
+export function cancelVerifiedDemoOrder(
+  orderId: string,
+  trustState: PortfolioTrustState,
+): UCPOrder | null {
+  assertCanExecuteProtectedBuyerAction(trustState);
+  return cancelDemoOrder(orderId);
 }

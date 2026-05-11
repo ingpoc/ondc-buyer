@@ -8,7 +8,7 @@ import { TrustNotice } from '../components/TrustStatus';
 import { useCart, useTrustState } from '../hooks';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { createLocalQuote } from '../lib/localCart';
-import { createDemoOrder } from '../lib/localOrders';
+import { createVerifiedDemoOrder } from '../lib/localOrders';
 import type { UCPAddress, UCPQuote } from '../types';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -178,7 +178,13 @@ export function CheckoutPage() {
           throw new Error('No session found');
         }
         if (quote) {
-          const order = createDemoOrder(sessionId, session, quote, deliveryAddress);
+          const order = createVerifiedDemoOrder(
+            sessionId,
+            session,
+            quote,
+            deliveryAddress,
+            trust.state,
+          );
           navigate(`/orders/${order.id}`);
           return;
         }
