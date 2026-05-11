@@ -19,6 +19,10 @@ export interface BillingFormProps {
   onSave?: () => void | Promise<void>;
 }
 
+export function formatBillingSaveError(error: unknown): string {
+  return error instanceof Error ? error.message : 'Billing save failed.';
+}
+
 export function BillingForm({ session, onSave }: BillingFormProps): React.ReactElement {
   const fieldPrefix = useId();
   const [name, setName] = useState(session?.buyer?.name || '');
@@ -27,6 +31,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
   const [taxId, setTaxId] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (session?.buyer) {
@@ -43,6 +48,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
 
     setSaving(true);
     setSaved(false);
+    setSaveError(null);
     const sessionId = localStorage.getItem(STORAGE_KEY);
 
     try {
@@ -71,6 +77,8 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       await onSave?.();
+    } catch (error) {
+      setSaveError(formatBillingSaveError(error));
     } finally {
       setSaving(false);
     }
@@ -114,6 +122,11 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
         {saved ? (
           <Badge variant="secondary" className="rounded-full bg-primary/15 text-primary">
             Information saved
+          </Badge>
+        ) : null}
+        {saveError ? (
+          <Badge variant="secondary" className="rounded-full bg-rose-100 text-rose-800">
+            {saveError}
           </Badge>
         ) : null}
 
