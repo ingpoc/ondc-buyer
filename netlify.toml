@@ -34,6 +34,30 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/payment-methods"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/payment-methods"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/payment-methods/*"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/payment-methods/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/account-recovery"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/account-recovery"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/account-recovery/*"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/account-recovery/:splat"
+  status = 200
+  force = true
+
 # SPA routing - redirect all paths to index.html
 [[redirects]]
   from = "/*"
