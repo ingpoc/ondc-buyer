@@ -16,42 +16,14 @@
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
+import type { LoginResult, SessionValidationResult, SSOUser } from '@portfolio/trust-client';
 import { COMMERCE_API_BASE } from './commerceConfig';
 import { IDENTITY_URL, IDENTITY_WEB_URL } from './identityUrls';
 
 // Current authenticated user's wallet address
 let currentWalletAddress: string | null = null;
 
-/**
- * Legacy identity-session user type
- */
-export interface SSOUser {
-  wallet_address: string;
-  pda_address?: string;
-  owner_pubkey?: string;
-  created_at: number;
-}
-
-/**
- * Session validation response
- */
-export interface SessionValidationResult {
-  valid: boolean;
-  user?: SSOUser;
-}
-
-/**
- * Login response
- */
-export interface LoginResult {
-  user: SSOUser;
-  session: {
-    session_id: number;
-    created_at: number;
-    last_active: number;
-    expires_at: number;
-  };
-}
+export type { LoginResult, SessionValidationResult, SSOUser };
 
 /**
  * Create configured Axios instance for identity service

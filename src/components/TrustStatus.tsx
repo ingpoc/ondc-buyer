@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { cn } from '../lib/utils';
 import { normalizeLoopbackUrl } from '../lib/loopback';
+import { TRUST_STATE_META } from '@portfolio/trust-client';
 import type { PortfolioTrustState } from '../lib/trust';
 
 const IDENTITY_WEB_URL = normalizeLoopbackUrl(
@@ -60,16 +61,7 @@ function trustMessage(state: PortfolioTrustState, reason?: string | null, error?
     return reason;
   }
 
-  return {
-    no_identity: 'Create an identity anchor in AadhaarChain before you attempt checkout.',
-    identity_present_unverified:
-      'Complete AadhaarChain verification before you attempt checkout.',
-    manual_review:
-      'Verification is under manual review. Elevated commerce actions stay paused until review completes.',
-    revoked_or_blocked:
-      'Your trust state is blocked or revoked. Review AadhaarChain before attempting elevated actions.',
-    verified: '',
-  }[state];
+  return TRUST_STATE_META[state].buyerActionMessage;
 }
 
 export function TrustStatusChip({
