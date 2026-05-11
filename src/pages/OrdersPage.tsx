@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PackageSearch } from 'lucide-react';
 import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { listDemoOrders } from '../lib/localOrders';
+import { fetchBuyerOrders } from '../lib/orderApi';
 import type { UCPOrder, UCPOrderStatus } from '../types';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -13,6 +14,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '../components/ui/empty';
+import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'complete';
@@ -54,7 +56,52 @@ function statusBadgeClass(status: UCPOrderStatus) {
 export function OrdersPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const orders: UCPOrder[] = COMMERCE_DEMO_MODE ? listDemoOrders() : [];
+  const [orders, setOrders] = useState<UCPOrder[]>(() => (COMMERCE_DEMO_MODE ? listDemoOrders() : []));
+  const [loading, setLoading] = useState(!COMMERCE_DEMO_MODE);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (COMMERCE_DEMO_MODE) {
+      setOrders(listDemoOrders());
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const sessionId = localStorage.getItem('ondc-session-id');
+    if (!sessionId) {
+      setOrders([]);
+      setLoading(false);
+      setError('No buyer session found. Add an item to the cart before checking orders.');
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    void fetchBuyerOrders(sessionId)
+      .then((nextOrders) => {
+        if (!cancelled) {
+          setOrders(nextOrders);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setOrders([]);
+          setError(err instanceof Error ? err.message : 'Failed to load orders.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredOrders = orders.filter((order) => {
     if (filter === 'all') return true;
@@ -98,7 +145,16 @@ export function OrdersPage() {
         </TabsList>
       </Tabs>
 
-      {filteredOrders.length === 0 ? (
+      {loading ? (
+        <div className="flex min-h-[30vh] flex-col items-center justify-center gap-3 text-center">
+          <Spinner className="size-6" />
+          <div className="text-sm text-muted-foreground">Loading orders...</div>
+        </div>
+      ) : error ? (
+        <Card className="border-rose-200 bg-rose-50 text-rose-900 shadow-none">
+          <CardContent className="py-5 text-sm">{error}</CardContent>
+        </Card>
+      ) : filteredOrders.length === 0 ? (
         <Empty className="border-border/70 bg-card/90">
           <EmptyHeader>
             <EmptyMedia variant="icon">

@@ -6,6 +6,7 @@ import { TrustNotice } from '../components/TrustStatus';
 import { useTrustState } from '../hooks';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { cancelVerifiedDemoOrder, getDemoOrder } from '../lib/localOrders';
+import { fetchBuyerOrder } from '../lib/orderApi';
 import {
   buildLocalSupportCase,
   createVerifiedLocalSupportCase,
@@ -29,8 +30,7 @@ const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
   if (COMMERCE_DEMO_MODE) {
     return getDemoOrder(orderId);
   }
-  void orderId;
-  return null;
+  return fetchBuyerOrder(orderId);
 };
 
 function getOrderStatusLabel(status: UCPOrderStatus): string {
