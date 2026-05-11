@@ -11,6 +11,10 @@ import {
   extractBuyerAgentEnvelope,
 } from '../lib/agentBuyerState';
 import { buildAgentControlPlaneUrl } from '../lib/agentControlPlane';
+import {
+  buildProtectedBuyerActionHeaders,
+  buildProtectedBuyerActionPolicy,
+} from '../lib/protectedBuyerActions';
 import type { BuyerAgentAction, BuyerAgentSnapshot } from '../types/agent';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -339,12 +343,24 @@ export function AgentChatPage(): JSX.Element {
     setTrustBlockReason(null);
 
     try {
+      const trustPolicy =
+        trust.state === 'verified'
+          ? buildProtectedBuyerActionPolicy({
+              action: 'agent_write',
+              walletAddress,
+              trustState: trust.state,
+              subjectId,
+              auditSubjectId: sessionIdRef.current,
+            })
+          : null;
+
       const response = await fetch(buildAgentControlPlaneUrl('/api/agent/buyer'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-User-Id': subjectId,
           ...(walletAddress ? { 'X-Wallet-Address': walletAddress } : {}),
+          ...(trustPolicy ? buildProtectedBuyerActionHeaders(trustPolicy) : {}),
         },
         body: JSON.stringify({
           prompt,
@@ -352,6 +368,7 @@ export function AgentChatPage(): JSX.Element {
           context: {
             buyer_snapshot: snapshot,
             response_contract: 'buyer_agent_v1',
+            trust_policy: trustPolicy,
           },
         }),
       });

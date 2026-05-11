@@ -4,9 +4,17 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { ChevronLeft, MapPin, Truck } from 'lucide-react';
 import { TrustNotice } from '../components/TrustStatus';
 import { useTrustState } from '../hooks';
-import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { cancelVerifiedDemoOrder, getDemoOrder } from '../lib/localOrders';
-import { createVerifiedLocalSupportCase, listSupportCases } from '../lib/localSupportCases';
+import {
+  buildLocalSupportCase,
+  createVerifiedLocalSupportCase,
+  listSupportCases,
+} from '../lib/localSupportCases';
+import {
+  buildProtectedBuyerActionHeaders,
+  buildProtectedBuyerActionPolicy,
+} from '../lib/protectedBuyerActions';
 import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
 import { Badge } from '../components/ui/badge';
@@ -73,7 +81,8 @@ export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { publicKey } = useWallet();
-  const trust = useTrustState(publicKey?.toBase58() ?? null);
+  const walletAddress = publicKey?.toBase58() ?? null;
+  const trust = useTrustState(walletAddress);
   const [order, setOrder] = useState<UCPOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,14 +139,33 @@ export function OrderDetailPage(): JSX.Element {
         return;
       }
 
-      setOrder({
-        ...order,
-        status: 'cancelled',
-        cancellation: {
-          cancelledBy: 'buyer',
-          cancelledAt: new Date().toISOString(),
-        },
+      const trustPolicy = buildProtectedBuyerActionPolicy({
+        action: 'refund_request',
+        walletAddress,
+        trustState: trust.state,
+        auditSubjectId: id,
+        auditReferenceId: order.id,
       });
+
+      const response = await fetch(buildCommerceUrl(`/api/orders/${encodeURIComponent(id)}/cancel`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildProtectedBuyerActionHeaders(trustPolicy),
+        },
+        body: JSON.stringify({
+          reason: 'Buyer requested cancellation',
+          trust_policy: trustPolicy,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Cancel order failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setOrder(data.order ?? order);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel order');
     } finally {
@@ -154,18 +182,59 @@ export function OrderDetailPage(): JSX.Element {
       return;
     }
 
-    const supportCase = createVerifiedLocalSupportCase(
-      {
-        order_id: order.id,
-        issue_type: issueType,
-        description: issueDescription.trim(),
-        evidence_links: [],
-      },
-      trust.state,
-    );
+    if (COMMERCE_DEMO_MODE) {
+      const supportCase = createVerifiedLocalSupportCase(
+        {
+          order_id: order.id,
+          issue_type: issueType,
+          description: issueDescription.trim(),
+          evidence_links: [],
+        },
+        trust.state,
+      );
+      setSupportCases((current) => [supportCase, ...current]);
+      setIssueDescription('');
+      return;
+    }
 
-    setSupportCases((current) => [supportCase, ...current]);
-    setIssueDescription('');
+    const supportCase = buildLocalSupportCase({
+      order_id: order.id,
+      issue_type: issueType,
+      description: issueDescription.trim(),
+      evidence_links: [],
+    });
+
+    const trustPolicy = buildProtectedBuyerActionPolicy({
+      action: 'dispute_creation',
+      walletAddress,
+      trustState: trust.state,
+      auditSubjectId: order.id,
+      auditReferenceId: supportCase.case_id,
+    });
+
+    void fetch(buildCommerceUrl(`/api/orders/${encodeURIComponent(order.id)}/support-cases`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildProtectedBuyerActionHeaders(trustPolicy),
+      },
+      body: JSON.stringify({
+        support_case: supportCase,
+        trust_policy: trustPolicy,
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Create support case failed: ${response.status}`);
+        }
+        const data = await response.json();
+        setSupportCases((current) => [data.support_case ?? supportCase, ...current]);
+        setIssueDescription('');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to create support case');
+      });
   }
 
   if (loading) {

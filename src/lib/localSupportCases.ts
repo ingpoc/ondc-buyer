@@ -47,11 +47,11 @@ export function upsertSupportCase(nextCase: BuyerSupportCase): BuyerSupportCase 
   return nextCase;
 }
 
-export function createLocalSupportCase(
+export function buildLocalSupportCase(
   partialCase: Omit<BuyerSupportCase, 'case_id' | 'network_case_id' | 'created_at' | 'updated_at' | 'status'>,
 ): BuyerSupportCase {
   const now = new Date().toISOString();
-  const supportCase: BuyerSupportCase = {
+  return {
     case_id: `case-${Math.random().toString(36).slice(2, 10)}`,
     network_case_id: `ondc-case-${Math.random().toString(36).slice(2, 12)}`,
     status: 'open',
@@ -59,8 +59,12 @@ export function createLocalSupportCase(
     updated_at: now,
     ...partialCase,
   };
+}
 
-  return upsertSupportCase(supportCase);
+export function createLocalSupportCase(
+  partialCase: Omit<BuyerSupportCase, 'case_id' | 'network_case_id' | 'created_at' | 'updated_at' | 'status'>,
+): BuyerSupportCase {
+  return upsertSupportCase(buildLocalSupportCase(partialCase));
 }
 
 export function createVerifiedLocalSupportCase(

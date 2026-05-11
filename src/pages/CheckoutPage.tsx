@@ -9,6 +9,10 @@ import { useCart, useTrustState } from '../hooks';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { createLocalQuote } from '../lib/localCart';
 import { createVerifiedDemoOrder } from '../lib/localOrders';
+import {
+  buildProtectedBuyerActionHeaders,
+  buildProtectedBuyerActionPolicy,
+} from '../lib/protectedBuyerActions';
 import type { UCPAddress, UCPQuote } from '../types';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -172,6 +176,7 @@ export function CheckoutPage() {
       if (!sessionId) {
         throw new Error('No session found');
       }
+      const walletAddress = publicKey?.toBase58() ?? null;
 
       if (COMMERCE_DEMO_MODE) {
         if (!session) {
@@ -196,13 +201,24 @@ export function CheckoutPage() {
         return;
       }
 
+      const trustPolicy = buildProtectedBuyerActionPolicy({
+        action: 'high_value_checkout',
+        walletAddress,
+        trustState: trust.state,
+        auditSubjectId: sessionId,
+      });
+
       const response = await fetch(buildCommerceUrl('/api/checkout'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildProtectedBuyerActionHeaders(trustPolicy),
+        },
         body: JSON.stringify({
           sessionId,
           deliveryAddress,
           preferences: {},
+          trust_policy: trustPolicy,
         }),
       });
 

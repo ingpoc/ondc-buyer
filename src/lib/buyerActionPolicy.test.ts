@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PortfolioTrustState } from './trust';
 import { canExecuteProtectedBuyerAction } from './buyerActionPolicy';
+import {
+  buildProtectedBuyerActionHeaders,
+  buildProtectedBuyerActionPolicy,
+  PROTECTED_BUYER_ACTIONS,
+} from './protectedBuyerActions';
 import { createVerifiedDemoOrder, cancelVerifiedDemoOrder } from './localOrders';
 import { createVerifiedLocalSupportCase, listSupportCases } from './localSupportCases';
 import type { UCPAddress, UCPQuote, UCPSession } from '../types';
@@ -63,6 +68,72 @@ describe('buyer protected action policy', () => {
       manual_review: false,
       revoked_or_blocked: false,
     });
+  });
+
+  it('defines every sensitive buyer action as a backend-enforced contract action', () => {
+    expect(PROTECTED_BUYER_ACTIONS).toEqual([
+      'high_value_checkout',
+      'restricted_category_checkout',
+      'refund_request',
+      'dispute_creation',
+      'payment_method_change',
+      'account_recovery',
+      'agent_write',
+    ]);
+  });
+
+  it('builds a backend policy envelope that requires server trust revalidation', () => {
+    const policy = buildProtectedBuyerActionPolicy({
+      action: 'dispute_creation',
+      walletAddress: 'wallet-1',
+      subjectId: 'subject-1',
+      trustState: 'verified',
+      auditSubjectId: 'order-1',
+      auditReferenceId: 'case-1',
+    });
+
+    expect(policy).toEqual({
+      action: 'dispute_creation',
+      required_trust_state: 'verified',
+      wallet_address: 'wallet-1',
+      subject_id: 'subject-1',
+      audit_subject_id: 'order-1',
+      audit_reference_id: 'case-1',
+      client_observed_trust_state: 'verified',
+      enforcement: 'backend_must_revalidate_trust',
+    });
+    expect(buildProtectedBuyerActionHeaders(policy)).toEqual({
+      'X-Buyer-Protected-Action': 'dispute_creation',
+      'X-Buyer-Required-Trust-State': 'verified',
+      'X-Wallet-Address': 'wallet-1',
+      'X-Buyer-Audit-Subject': 'order-1',
+      'X-Buyer-Trust-Enforcement': 'backend_must_revalidate_trust',
+    });
+  });
+
+  it.each(trustStates.filter((state) => state !== 'verified'))(
+    'does not build a backend policy envelope for %s trust',
+    (trustState) => {
+      expect(() =>
+        buildProtectedBuyerActionPolicy({
+          action: 'high_value_checkout',
+          walletAddress: 'wallet-1',
+          trustState,
+          auditSubjectId: 'session-1',
+        }),
+      ).toThrow('Verified buyer trust is required before checkout');
+    },
+  );
+
+  it('requires a wallet address for backend-protected buyer actions', () => {
+    expect(() =>
+      buildProtectedBuyerActionPolicy({
+        action: 'payment_method_change',
+        walletAddress: null,
+        trustState: 'verified',
+        auditSubjectId: 'payment-profile-1',
+      }),
+    ).toThrow('Wallet address is required before protected buyer actions can be sent.');
   });
 
   it('blocks local checkout order creation unless buyer trust is verified', () => {
