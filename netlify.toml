@@ -58,15 +58,15 @@
   status = 200
   force = true
 
-# SPA routing - redirect all paths to index.html
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
 # API proxy (optional - for future backend integration)
 [[redirects]]
   from = "/api/*"
   to = "https://buyer-app-preprod-v2.ondc.org/api/:splat"
   status = 200
   force = true
+
+# SPA routing - redirect all non-API paths to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
