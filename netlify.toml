@@ -7,6 +7,32 @@
   VITE_IDENTITY_URL = "https://identity-aadhar-gateway.onrender.com"
   VITE_IDENTITY_WEB_URL = "https://aadharcha.in"
   VITE_TRUST_API_URL = "https://identity-aadhar-gateway.onrender.com"
+  TRUST_API_URL = "https://identity-aadhar-gateway.onrender.com"
+  BUYER_COMMERCE_API_URL = "https://buyer-app-preprod-v2.ondc.org"
+
+[[redirects]]
+  from = "/api/checkout"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/checkout"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/orders/:orderId/cancel"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/orders/:orderId/cancel"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/orders/:orderId/support-cases"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/orders/:orderId/support-cases"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/agent/buyer"
+  to = "/.netlify/functions/protected-buyer-action?target=/api/agent/buyer"
+  status = 200
+  force = true
 
 # SPA routing - redirect all paths to index.html
 [[redirects]]
