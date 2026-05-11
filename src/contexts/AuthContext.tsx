@@ -1,3 +1,8 @@
+/**
+ * AUTH-COMPOSITION: deployed_public_mode=compatibility_probe_only
+ * AUTH-COMPOSITION: local_dev_mode=identity_session_experiment
+ */
+
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { SSOUser } from '@/lib/api';
 import { IDENTITY_URL, IDENTITY_WEB_URL } from '@/lib/identityUrls';

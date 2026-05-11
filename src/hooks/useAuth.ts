@@ -1,11 +1,10 @@
 /**
- * SSO-001: Auth Hook with Wallet-Based Session Sharing
+ * AUTH-COMPOSITION: deployed_public_mode=compatibility_probe_only
  *
- * React hook for wallet-based SSO with session sharing across apps:
- * - Check existing session on mount and restore user state
- * - When wallet connects → validate/create session via gateway
- * - User stays logged in via session even when wallet disconnects
- * - Only logout clears the session
+ * React hook for the identity-session compatibility surface:
+ * - restore user state when a compatible identity session exists
+ * - local and explicitly configured dev flows may validate or create sessions
+ * - deployed public behavior must not be described as cross-app session sharing
  *
  * Usage:
  * ```tsx
@@ -23,9 +22,9 @@ export interface UseAuthResult {
   loading: boolean;
   /** Is user currently authenticated */
   isAuthenticated: boolean;
-  /** Logout from SSO and clear user state */
+  /** Logout from the identity-session provider and clear user state */
   logout: () => void;
-  /** Refresh user session from SSO */
+  /** Refresh user state from the identity-session provider */
   refresh: () => Promise<void>;
 }
 

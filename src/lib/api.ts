@@ -1,17 +1,18 @@
 /**
- * SSO-002: API Client with Aadharcha.in SSO Session Support
+ * AUTH-COMPOSITION: producer=aadhaar-chain
+ * AUTH-COMPOSITION: deployed_public_mode=compatibility_probe_only
+ * AUTH-COMPOSITION: local_dev_mode=identity_session_experiment
  *
- * Wallet-based SSO integration:
- * - Uses Solana wallet address as user ID
- * - Cookie-based session (aadharcha_session)
- * - Session validation via /api/auth/validate
- * - Auto-redirect to identity provider on 401
+ * Identity-session compatibility client:
+ * - local and explicitly configured dev flows may exercise AadhaarChain identity sessions
+ * - deployed public behavior must not claim a working shared AadhaarChain session broker
+ * - trust-state consumption stays separate from auth composition
  *
- * Aadharcha.in SSO Endpoints:
- * - POST /api/auth/login - Create session with wallet_address
- * - GET /api/auth/me - Get current user (401 if not authenticated)
- * - GET /api/auth/validate - Validate session (returns valid: boolean)
- * - POST /api/auth/logout - Revoke session and clear cookie
+ * Compatibility endpoints:
+ * - POST /api/auth/login - request a session when the identity provider enables it
+ * - GET /api/auth/me - read current user when an identity session exists
+ * - GET /api/auth/validate - validate an existing identity session
+ * - POST /api/auth/logout - revoke an existing identity session
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
@@ -22,7 +23,7 @@ import { IDENTITY_URL, IDENTITY_WEB_URL } from './identityUrls';
 let currentWalletAddress: string | null = null;
 
 /**
- * User type from Aadharcha SSO
+ * Legacy identity-session user type
  */
 export interface SSOUser {
   wallet_address: string;
@@ -108,10 +109,10 @@ apiClient.interceptors.response.use(
 );
 
 /**
- * Login with wallet address
+ * Login with wallet address when the identity-session surface is active
  * POST /api/auth/login
  *
- * Creates SSO session and sets aadharcha_session cookie
+ * Requests an identity session and sets a cookie when supported by the producer
  */
 export async function loginWithWallet(walletAddress: string): Promise<LoginResult> {
   const response = await identityClient.post<LoginResult>('/auth/login', {
@@ -170,10 +171,10 @@ export async function getCurrentUser(): Promise<SSOUser> {
 }
 
 /**
- * Logout from SSO
+ * Logout from identity session
  * POST /api/auth/logout
  *
- * Revokes session and clears cookie
+ * Revokes the session and clears the cookie when present
  */
 export async function logout(): Promise<void> {
   try {
@@ -211,7 +212,7 @@ export function redirectToLogin(returnPath: string = window.location.pathname): 
 }
 
 /**
- * Record app access for SSO analytics
+ * Record app access for identity-session analytics
  * POST /api/auth/apps/{app_name}/access
  *
  * Call this when user successfully accesses your app
