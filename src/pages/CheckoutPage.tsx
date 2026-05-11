@@ -214,7 +214,7 @@ export function CheckoutPage() {
 
       setQuote(data.quote);
     } catch (err) {
-      if (session) {
+      if (session && COMMERCE_DEMO_MODE) {
         setQuote(createLocalQuote(session, deliveryAddress));
         setSubmitError('Live checkout service is unavailable. Showing a local demo quote instead.');
       } else {

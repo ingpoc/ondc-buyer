@@ -22,6 +22,7 @@ Create a `.env` file:
 ```env
 VITE_AADHAAR_API_URL=http://127.0.0.1:43101
 VITE_BUYER_COMMERCE_URL=http://127.0.0.1:43102
+VITE_COMMERCE_DEMO_MODE=true
 VITE_AGENT_CONTROL_PLANE_URL=http://127.0.0.1:8100
 VITE_AGENT_RUNTIME_ENABLED=false
 ```
@@ -57,5 +58,7 @@ npm run build
 - **Design System**: local Tailwind/shadcn-style primitives
 - **State Management**: React hooks (local)
 - **Trust Producer**: AadhaarChain gateway at `VITE_AADHAAR_API_URL`
-- **Commerce Backend**: optional `VITE_BUYER_COMMERCE_URL`; local mock responses remain the current deterministic fallback
+- **Commerce Backend**: optional `VITE_BUYER_COMMERCE_URL`; local quote/order fallback is demo-only through `VITE_COMMERCE_DEMO_MODE=true`
 - **Agent Runtime**: optional shared control plane at `VITE_AGENT_CONTROL_PLANE_URL`
+
+Trust badges and disabled checkout controls are user-facing guidance only. Protected checkout, refund, dispute, payment, recovery, and agent write actions still require server-side policy in the commerce backend before they can be treated as production enforcement.

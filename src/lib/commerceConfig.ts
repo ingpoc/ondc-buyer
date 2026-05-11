@@ -1,14 +1,35 @@
-const RAW_COMMERCE_API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() || '';
-const COMMERCE_DEMO_MODE_OVERRIDE = import.meta.env.VITE_COMMERCE_DEMO_MODE;
+interface CommerceEnv {
+  DEV?: boolean;
+  VITE_API_BASE_URL?: string;
+  VITE_BUYER_COMMERCE_URL?: string;
+  VITE_COMMERCE_DEMO_MODE?: string;
+}
+
 const LOCAL_COMMERCE_BACKEND_RE = /^https?:\/\/(localhost|127\.0\.0\.1):3001$/i;
 
-export const COMMERCE_DEMO_MODE = COMMERCE_DEMO_MODE_OVERRIDE === 'true' || (
-  import.meta.env.DEV &&
-  COMMERCE_DEMO_MODE_OVERRIDE !== 'false' &&
-  LOCAL_COMMERCE_BACKEND_RE.test(RAW_COMMERCE_API_BASE)
-);
+export function resolveCommerceConfig(env: CommerceEnv) {
+  const rawCommerceApiBase = (
+    env.VITE_BUYER_COMMERCE_URL?.trim()
+    || env.VITE_API_BASE_URL?.trim()
+    || ''
+  );
+  const demoModeOverride = env.VITE_COMMERCE_DEMO_MODE;
+  const demoMode = demoModeOverride === 'true' || (
+    Boolean(env.DEV)
+    && demoModeOverride !== 'false'
+    && LOCAL_COMMERCE_BACKEND_RE.test(rawCommerceApiBase)
+  );
 
-export const COMMERCE_API_BASE = COMMERCE_DEMO_MODE ? '' : RAW_COMMERCE_API_BASE;
+  return {
+    apiBase: demoMode ? '' : rawCommerceApiBase,
+    demoMode,
+  };
+}
+
+const commerceConfig = resolveCommerceConfig(import.meta.env);
+
+export const COMMERCE_DEMO_MODE = commerceConfig.demoMode;
+export const COMMERCE_API_BASE = commerceConfig.apiBase;
 
 export function buildCommerceUrl(endpoint: string): string {
   return COMMERCE_API_BASE ? `${COMMERCE_API_BASE}${endpoint}` : endpoint;
