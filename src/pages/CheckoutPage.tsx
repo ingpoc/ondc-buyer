@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { BillingForm } from '../components/BillingForm';
-import { PaymentSelector } from '../components/PaymentSelector';
+import { PaymentSelector, type PaymentMethod } from '../components/PaymentSelector';
 import { QuoteDisplay } from '../components/QuoteDisplay';
 import { TrustNotice } from '../components/TrustStatus';
 import { useCart, useTrustState } from '../hooks';
@@ -144,6 +144,7 @@ export function CheckoutPage() {
   const [quote, setQuote] = useState<UCPQuote | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [deliveryAddress, setDeliveryAddress] = useState<UCPAddress>({
     line1: '',
     city: '',
@@ -189,6 +190,7 @@ export function CheckoutPage() {
             quote,
             deliveryAddress,
             trust.state,
+            paymentMethod,
           );
           navigate(`/orders/${order.id}`);
           return;
@@ -217,7 +219,10 @@ export function CheckoutPage() {
         body: JSON.stringify({
           sessionId,
           deliveryAddress,
-          preferences: {},
+          paymentMethod,
+          preferences: {
+            paymentMethod,
+          },
           trust_policy: trustPolicy,
         }),
       });
@@ -311,7 +316,7 @@ export function CheckoutPage() {
           <div className="space-y-6">
             <BillingForm session={session} onSave={refreshCart} />
             <DeliveryAddressForm address={deliveryAddress} onChange={setDeliveryAddress} />
-            <PaymentSelector />
+            <PaymentSelector selected={paymentMethod} onSelect={setPaymentMethod} />
           </div>
 
           <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">

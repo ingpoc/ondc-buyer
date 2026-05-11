@@ -141,8 +141,9 @@ describe('buyer protected action policy', () => {
       createVerifiedDemoOrder('session-1', session, quote, deliveryAddress, 'manual_review'),
     ).toThrow('Verified buyer trust is required before checkout');
 
-    const order = createVerifiedDemoOrder('session-1', session, quote, deliveryAddress, 'verified');
+    const order = createVerifiedDemoOrder('session-1', session, quote, deliveryAddress, 'verified', 'card');
     expect(order.status).toBe('created');
+    expect(order.payment?.type).toBe('card');
   });
 
   it('blocks local cancellation and support case writes unless buyer trust is verified', () => {

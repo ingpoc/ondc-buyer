@@ -6,6 +6,7 @@ import { clearLocalSession } from './localCart';
 const LOCAL_ORDER_STORAGE_KEY = 'ondc-local-demo-orders';
 const DEMO_PROVIDER_NAME = 'Local Demo Seller';
 const DEMO_FULFILLMENT_PROVIDER = 'Local Demo Logistics';
+type BuyerPaymentMethod = NonNullable<UCPOrder['payment']>['type'];
 
 function readOrderStore(): UCPOrder[] {
   const raw = localStorage.getItem(LOCAL_ORDER_STORAGE_KEY);
@@ -70,7 +71,8 @@ export function createDemoOrder(
   sessionId: string,
   session: UCPSession,
   quote: UCPQuote,
-  deliveryAddress: UCPAddress
+  deliveryAddress: UCPAddress,
+  paymentMethod: BuyerPaymentMethod = 'upi',
 ): UCPOrder {
   const now = new Date().toISOString();
   const order: UCPOrder = {
@@ -115,7 +117,7 @@ export function createDemoOrder(
       },
     },
     payment: {
-      type: 'upi',
+      type: paymentMethod,
       status: 'NOT-PAID',
       amount: {
         currency: quote.total.currency,
@@ -135,9 +137,10 @@ export function createVerifiedDemoOrder(
   quote: UCPQuote,
   deliveryAddress: UCPAddress,
   trustState: PortfolioTrustState,
+  paymentMethod?: BuyerPaymentMethod,
 ): UCPOrder {
   assertCanExecuteProtectedBuyerAction(trustState);
-  return createDemoOrder(sessionId, session, quote, deliveryAddress);
+  return createDemoOrder(sessionId, session, quote, deliveryAddress, paymentMethod);
 }
 
 export function cancelDemoOrder(orderId: string): UCPOrder | null {
