@@ -1,23 +1,18 @@
 # ONDC UCP Buyer Portal
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/openclaw-gurusharan/ondc-buyer)
+`ondc-buyer` is the portfolio buyer application. It consumes AadhaarChain trust state for discovery, cart, checkout readiness, buyer agent workflows, and purpose-bound identity proof signing.
 
-Buyer web application for ONDC UCP integration.
+It does not verify identity documents and it must not receive raw Aadhaar, PAN, OCR, or verifier evidence.
 
-## Prerequisites
+## Local Service
 
-- Node.js 18+
-- npm 10+
+| Service | URL |
+| --- | --- |
+| Buyer frontend | `http://127.0.0.1:43102` |
+| AadhaarChain gateway | `http://127.0.0.1:43101` |
+| Agent control plane | `http://127.0.0.1:8100` |
 
-## Installation
-
-```bash
-npm install
-```
-
-## Environment Variables
-
-Create a `.env` file:
+## Environment
 
 ```env
 VITE_AADHAAR_API_URL=http://127.0.0.1:43101
@@ -27,43 +22,55 @@ VITE_AGENT_CONTROL_PLANE_URL=http://127.0.0.1:8100
 VITE_AGENT_RUNTIME_ENABLED=false
 ```
 
+`VITE_COMMERCE_DEMO_MODE=true` is a local fallback for portfolio acceptance. It is not production commerce enforcement.
+
 ## Development
 
 ```bash
-# Start dev server (port 43102)
+npm install
 npm run dev
-
-# Type check
 npm run typecheck
-
-# Test
 npm test
-
-# Build for production
+npm run lint
 npm run build
+```
 
-# Verify configured staging commerce API supports the buyer journey
+Staging commerce verification:
+
+```bash
 npm run verify:staging-journey
 ```
 
-## Features
+That verifier expects JSON commerce API responses for search, cart, and orders. A `200 text/html` response is not a valid commerce API pass.
 
-- Product search with local mock fallbacks when no commerce backend is available
-- Local cart and order state for portfolio acceptance flows
-- Trust-aware checkout gated by AadhaarChain `verified` trust state
-- Order tracking and support-case surfaces
-- AI buyer agent chat through the shared agent control plane when enabled
+## Trust And Identity Flow
 
-## Architecture
+The buyer app reads AadhaarChain trust from:
 
-- **Framework**: Vite + React + TypeScript
-- **Routing**: React Router v6
-- **Design System**: local Tailwind/shadcn-style primitives
-- **State Management**: React hooks (local)
-- **Trust Producer**: AadhaarChain gateway at `VITE_AADHAAR_API_URL`
-- **Commerce Backend**: optional `VITE_BUYER_COMMERCE_URL`; local quote/order fallback is demo-only through `VITE_COMMERCE_DEMO_MODE=true`
-- **Agent Runtime**: optional shared control plane at `VITE_AGENT_CONTROL_PLANE_URL`
+- `GET /api/identity/{wallet_address}/trust`
 
-Trust badges and disabled checkout controls are user-facing guidance only. Protected checkout, refund, dispute, payment, recovery, and agent write actions still require server-side policy in the commerce backend before they can be treated as production enforcement.
+Verified trust enables high-trust buyer UI states such as checkout readiness. The app also exposes a wallet-signing control for `buyer_checkout_identity_proof`:
 
-`npm run verify:staging-journey` must pass before claiming staging end-to-end buyer journey readiness. The verifier expects JSON commerce API responses for search, cart, and orders.
+1. request a short-lived AadhaarChain proof challenge
+2. ask the connected wallet to sign the challenge
+3. submit the signed proof back to AadhaarChain for verification
+4. display `Identity signed` only after the gateway verifies the wallet signature
+
+Chrome validation in the signed wallet profile has produced `Identity signed` for buyer proof with wallet `C5svcE...g92YFF`.
+
+## Agent Page
+
+Route: `/agent`
+
+The buyer agent page uses the shared agent control plane. In signed Chrome it renders with:
+
+- wallet `C5svcE...g92YFF`
+- runtime `local_cli`
+- high-trust write access enabled
+- prior buyer agent messages and structured recommendations visible
+
+## Production Boundary
+
+Frontend trust badges and disabled controls are guidance only. Protected checkout, refund, dispute, payment, recovery, and agent write actions require server-side commerce policy before production reliance.
+
+Open risk: server-side protected buyer action enforcement is still a P0/P1 portfolio item.
