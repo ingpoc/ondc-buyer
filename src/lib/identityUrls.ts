@@ -6,7 +6,7 @@ const DEPLOYED_IDENTITY_API_URL = 'https://identity-aadhar-gateway-main.onrender
 const DEPLOYED_IDENTITY_WEB_URL = 'https://aadharcha.in';
 
 function resolveConfiguredUrl(configured: string | undefined, fallback: string) {
-  return normalizeLoopbackUrl(configured?.trim() || fallback);
+  return normalizeLoopbackUrl(configured?.trim() || fallback).replace(/\/+$/, '');
 }
 
 function isLocalBrowserHost() {
@@ -18,9 +18,13 @@ function isLocalBrowserHost() {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function configuredAadhaarApiUrl() {
+  return import.meta.env.VITE_AADHAAR_API_URL || import.meta.env.VITE_IDENTITY_URL;
+}
+
 export function resolveIdentityApiUrl() {
   return resolveConfiguredUrl(
-    import.meta.env.VITE_IDENTITY_URL,
+    configuredAadhaarApiUrl(),
     isLocalBrowserHost() ? LOCAL_IDENTITY_API_URL : DEPLOYED_IDENTITY_API_URL,
   );
 }
@@ -34,7 +38,7 @@ export function resolveIdentityWebUrl() {
 
 export function resolveTrustApiUrl() {
   return resolveConfiguredUrl(
-    import.meta.env.VITE_TRUST_API_URL,
+    import.meta.env.VITE_TRUST_API_URL || configuredAadhaarApiUrl(),
     isLocalBrowserHost() ? LOCAL_IDENTITY_API_URL : DEPLOYED_IDENTITY_API_URL,
   );
 }
