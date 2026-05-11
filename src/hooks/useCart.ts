@@ -7,6 +7,7 @@ import {
   removeLocalItem,
   updateLocalQuantity,
 } from '../lib/localCart';
+import { formatCartApiError, shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
 
 const STORAGE_KEY = 'ondc-session-id';
 
@@ -74,9 +75,13 @@ export function useCart(): UseCartResult {
       const data = await cartRequest(buildCommerceUrl(`/api/cart?sessionId=${sessionId}`));
       setSession(data.session);
     } catch (err) {
-      console.error('Failed to refresh cart, falling back to local session:', err);
-      setSession(getLocalSession(sessionId));
-      setError(null);
+      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
+        console.error('Failed to refresh cart, falling back to local session:', err);
+        setSession(getLocalSession(sessionId));
+        setError(null);
+      } else {
+        setError(formatCartApiError(err, 'Refresh cart'));
+      }
     } finally {
       setLoading(false);
     }
@@ -102,9 +107,13 @@ export function useCart(): UseCartResult {
       });
       setSession(data.session);
     } catch (err) {
-      console.error('Failed to add item to cart, falling back to local update:', err);
-      setSession(addLocalItem(sessionId, item, quantity));
-      setError(null);
+      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
+        console.error('Failed to add item to cart, falling back to local update:', err);
+        setSession(addLocalItem(sessionId, item, quantity));
+        setError(null);
+      } else {
+        setError(formatCartApiError(err, 'Add item to cart'));
+      }
     } finally {
       setLoading(false);
     }
@@ -125,9 +134,13 @@ export function useCart(): UseCartResult {
       );
       setSession(data.session);
     } catch (err) {
-      console.error('Failed to remove item from cart, falling back to local update:', err);
-      setSession(removeLocalItem(sessionId, itemId));
-      setError(null);
+      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
+        console.error('Failed to remove item from cart, falling back to local update:', err);
+        setSession(removeLocalItem(sessionId, itemId));
+        setError(null);
+      } else {
+        setError(formatCartApiError(err, 'Remove item from cart'));
+      }
     } finally {
       setLoading(false);
     }
@@ -149,9 +162,13 @@ export function useCart(): UseCartResult {
       });
       setSession(data.session);
     } catch (err) {
-      console.error('Failed to update cart quantity, falling back to local update:', err);
-      setSession(updateLocalQuantity(sessionId, itemId, quantity));
-      setError(null);
+      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
+        console.error('Failed to update cart quantity, falling back to local update:', err);
+        setSession(updateLocalQuantity(sessionId, itemId, quantity));
+        setError(null);
+      } else {
+        setError(formatCartApiError(err, 'Update cart quantity'));
+      }
     } finally {
       setLoading(false);
     }
