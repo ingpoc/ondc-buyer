@@ -232,7 +232,7 @@ function HeaderSearch({
   );
 }
 
-function HeaderStatusRail({
+export function HeaderStatusRail({
   subjectId,
   walletAddress,
   runtime,
