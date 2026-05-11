@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { SearchBar } from '../components/SearchBar';
 import { useTrustState } from '../hooks';
 import { TrustNotice } from '../components/TrustStatus';
+import { createSignedIdentityProof } from '../lib/trust';
 import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 
 function MetricCard({
@@ -30,11 +33,38 @@ function MetricCard({
 
 export function SearchPage(): JSX.Element {
   const navigate = useNavigate();
-  const { publicKey } = useWallet();
+  const { publicKey, signMessage } = useWallet();
   const trust = useTrustState(publicKey?.toBase58() ?? null);
+  const [proofState, setProofState] = useState<'idle' | 'signing' | 'verified' | 'error'>('idle');
+  const [proofMessage, setProofMessage] = useState<string | null>(null);
 
   function handleSearch(category: string, query: string): void {
     navigate(`/results?category=${category}&q=${encodeURIComponent(query)}`);
+  }
+
+  async function handleProveBuyerIdentity(): Promise<void> {
+    const walletAddress = publicKey?.toBase58();
+    if (!walletAddress || !signMessage) {
+      setProofState('error');
+      setProofMessage('Wallet message signing is not available for this account.');
+      return;
+    }
+
+    setProofState('signing');
+    setProofMessage(null);
+    try {
+      const result = await createSignedIdentityProof({
+        walletAddress,
+        audience: 'buyer',
+        purpose: 'buyer_checkout_identity_proof',
+        signMessage,
+      });
+      setProofState(result.valid ? 'verified' : 'error');
+      setProofMessage(result.reason);
+    } catch (error) {
+      setProofState('error');
+      setProofMessage(error instanceof Error ? error.message : 'Buyer identity proof failed.');
+    }
   }
 
   return (
@@ -105,6 +135,33 @@ export function SearchPage(): JSX.Element {
             value={trust.loading ? 'Checking' : trust.state === 'verified' ? 'Open' : 'Paused'}
             hint="Verification determines whether elevated checkout actions are available."
           />
+          <Card className="border-border/70 bg-card/90 shadow-sm">
+            <CardHeader className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Buyer proof
+              </div>
+              <CardTitle className="text-xl">
+                {proofState === 'verified' ? 'Identity signed' : 'Sign buyer proof'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm leading-6 text-muted-foreground">
+                Use your wallet to sign a short-lived AadhaarChain proof before high-trust buyer
+                actions.
+              </p>
+              <Button
+                type="button"
+                className="rounded-full"
+                disabled={trust.loading || trust.state !== 'verified' || proofState === 'signing'}
+                onClick={() => void handleProveBuyerIdentity()}
+              >
+                {proofState === 'signing' ? 'Awaiting signature' : 'Sign buyer proof'}
+              </Button>
+              {proofMessage ? (
+                <p className="text-sm leading-6 text-muted-foreground">{proofMessage}</p>
+              ) : null}
+            </CardContent>
+          </Card>
           <MetricCard
             label="Discovery lanes"
             value="4"
