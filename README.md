@@ -41,6 +41,9 @@ npm test
 
 # Build for production
 npm run build
+
+# Verify configured staging commerce API supports the buyer journey
+npm run verify:staging-journey
 ```
 
 ## Features
@@ -62,3 +65,5 @@ npm run build
 - **Agent Runtime**: optional shared control plane at `VITE_AGENT_CONTROL_PLANE_URL`
 
 Trust badges and disabled checkout controls are user-facing guidance only. Protected checkout, refund, dispute, payment, recovery, and agent write actions still require server-side policy in the commerce backend before they can be treated as production enforcement.
+
+`npm run verify:staging-journey` must pass before claiming staging end-to-end buyer journey readiness. The verifier expects JSON commerce API responses for search, cart, and orders.
