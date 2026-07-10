@@ -1,7 +1,16 @@
-# ONDC Buyer QA notes
+# ONDC Buyer QA
 
-Ledger: `test-ledger.json`. Full browser harness: `aadhaar-chain/qa`.
+Pointer only. **Do not** keep a ledger or grader copy here.
 
-Root-cause fixes:
-- Vendored `@portfolio/trust-client` (missing shared package in workspace)
-- Demo order bridge publishes to `ondc-portfolio-demo-orders` for seller queue
+Portfolio control owner: [`../aadhaar-chain/qa/docs/workflow/README.md`](../../aadhaar-chain/qa/docs/workflow/README.md)
+
+Run from `aadhaar-chain/qa`:
+
+```bash
+cd ../aadhaar-chain/qa
+npm run grade:deterministic && npm run grade:browser && npm run grade:wallet
+```
+
+Repo-local notes (not portfolio ownership):
+- Vendored `@portfolio/trust-client` at `./shared/trust-client`
+- Demo order bridge publishes to `ondc-portfolio-demo-orders`

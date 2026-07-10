@@ -1,5 +1,6 @@
 # @portfolio/trust-client (vendored)
 
-Workspace clone was missing `../shared/trust-client`. This package is reconstructed from AadhaarChain gateway contracts and buyer/seller consumers so Vite/Vitest aliases resolve locally.
+Workspace had no shared `../shared/trust-client`. This package is reconstructed from AadhaarChain gateway contracts and local consumers.
 
-Canonical long-term home should be a shared portfolio package; until then this vendored copy keeps local demo + QA runnable.
+**Alias target (required):** `./shared/trust-client/src/index.ts` in Vite, Vitest, and tsconfig.  
+Do not point at missing `../shared/trust-client`.
