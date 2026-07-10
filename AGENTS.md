@@ -13,11 +13,13 @@
 
 ## Browser Testing
 
-- BEFORE browser testing ONDC Buyer -> read `../docs/workflow/browser-testing-control-plane.md`
-- BEFORE validating the same-user portfolio journey -> read `../docs/workflow/portfolio-browser-acceptance-loop.md`
+- BEFORE browser testing ONDC Buyer -> read `../aadhaar-chain/qa/docs/workflow/browser-testing-control-plane.md` (portfolio control plane lives with the trust producer)
+- BEFORE validating the same-user portfolio journey -> read `../aadhaar-chain/qa/docs/workflow/portfolio-browser-acceptance-loop.md`
+- Session friction / standing traps -> `../aadhaar-chain/qa/docs/workflow/session-friction-log.md`
 - Browser testing for this repo should happen after AadhaarChain trust state is confirmed, because buyer trust notices and checkout expectations depend on it.
 - Critical browser routes for this repo: `/search`, `/results`, `/product/:id`, `/cart`, `/checkout`, `/orders`, `/orders/:id`, `/agent`
 - Distinguish trust-state failures from missing commerce backend failures; do not collapse both into a generic buyer-app failure.
+- Local ledger mirror: `qa/test-ledger.json`. Prefer running graders from `aadhaar-chain/qa`.
 
 ONDC UCP Buyer Portal - Private buyer webapp
 
