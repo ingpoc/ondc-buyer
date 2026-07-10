@@ -4,6 +4,7 @@ import { assertCanExecuteProtectedBuyerAction } from './buyerActionPolicy';
 import { clearLocalSession } from './localCart';
 
 const LOCAL_ORDER_STORAGE_KEY = 'ondc-local-demo-orders';
+const PORTFOLIO_ORDER_BRIDGE_KEY = 'ondc-portfolio-demo-orders';
 const DEMO_PROVIDER_NAME = 'Local Demo Seller';
 const DEMO_FULFILLMENT_PROVIDER = 'Local Demo Logistics';
 type BuyerPaymentMethod = NonNullable<UCPOrder['payment']>['type'];
@@ -23,6 +24,18 @@ function readOrderStore(): UCPOrder[] {
 
 function writeOrderStore(orders: UCPOrder[]) {
   localStorage.setItem(LOCAL_ORDER_STORAGE_KEY, JSON.stringify(orders));
+}
+
+function publishToSellerBridge(order: UCPOrder) {
+  // Same-origin portfolio demos share one browser profile; bridge buyer checkout into seller queue.
+  try {
+    const raw = localStorage.getItem(PORTFOLIO_ORDER_BRIDGE_KEY);
+    const existing = raw ? (JSON.parse(raw) as UCPOrder[]) : [];
+    const next = [order, ...existing.filter((entry) => entry.id !== order.id)];
+    localStorage.setItem(PORTFOLIO_ORDER_BRIDGE_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore bridge failures in non-browser contexts.
+  }
 }
 
 function buildDemoOrderId(): string {
@@ -127,6 +140,7 @@ export function createDemoOrder(
   };
 
   writeOrderStore([order, ...readOrderStore()]);
+  publishToSellerBridge(order);
   clearLocalSession(sessionId);
   return order;
 }
