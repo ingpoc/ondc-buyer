@@ -75,7 +75,7 @@ export function TrustStatusChip({
 
   return (
     <a
-      href={`${IDENTITY_WEB_URL}/dashboard`}
+      href={`${IDENTITY_WEB_URL}/home`}
       className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:border-primary/30 hover:text-primary"
     >
       <span
@@ -140,7 +140,7 @@ export function TrustNotice({
           </div>
         </div>
         <Button asChild variant="outline" className="rounded-full">
-          <a href={`${IDENTITY_WEB_URL}/dashboard`}>
+          <a href={`${IDENTITY_WEB_URL}/home`}>
             {actionLabel}
             <ArrowUpRight className="size-4" />
           </a>

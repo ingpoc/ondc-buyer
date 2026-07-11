@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Search } from 'lucide-react';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import {
   Field,
@@ -36,6 +35,11 @@ export interface SearchBarProps {
   compact?: boolean;
 }
 
+function normalizeQuery(value?: string): string {
+  const raw = String(value ?? '').trim();
+  return raw === 'undefined' ? '' : raw;
+}
+
 export function SearchBar({
   onSearch,
   defaultCategory = 'grocery',
@@ -43,7 +47,7 @@ export function SearchBar({
   compact = false,
 }: SearchBarProps): JSX.Element {
   const [category, setCategory] = useState(defaultCategory);
-  const [query, setQuery] = useState(defaultQuery);
+  const [query, setQuery] = useState(() => normalizeQuery(defaultQuery));
   const categoryFieldId = compact ? 'search-category-compact' : 'search-category';
   const queryFieldId = compact ? 'search-query-compact' : 'search-query';
 
@@ -52,12 +56,12 @@ export function SearchBar({
   }, [defaultCategory]);
 
   useEffect(() => {
-    setQuery(defaultQuery);
+    setQuery(normalizeQuery(defaultQuery));
   }, [defaultQuery]);
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    onSearch(category, query.trim());
+    onSearch(category, normalizeQuery(query));
   }
 
   const searchGroupClassName = compact ? undefined : 'h-12 rounded-[1.6rem] bg-background';
@@ -67,20 +71,9 @@ export function SearchBar({
   const categoryTriggerClassName = compact ? undefined : 'h-12 text-[15px] md:text-[15px]';
 
   return (
-    <form onSubmit={handleSubmit} className={compact ? 'space-y-4' : 'space-y-6'}>
-      {!compact ? (
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary" className="rounded-full">
-            Intent-first search
-          </Badge>
-          <Badge variant="outline" className="rounded-full">
-            Verified commerce
-          </Badge>
-        </div>
-      ) : null}
-
+    <form onSubmit={handleSubmit} className={compact ? 'space-y-4' : 'space-y-5'}>
       <FieldGroup className="gap-4">
-        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_auto] lg:items-end">
           <Field>
             <FieldLabel htmlFor={categoryFieldId}>Category</FieldLabel>
             <FieldContent>
@@ -111,45 +104,20 @@ export function SearchBar({
                 <InputGroupInput
                   id={queryFieldId}
                   name="query"
-                  value={query}
+                  value={query ?? ''}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Fresh fruit, ready meals, office staples..."
+                  placeholder="Rice, meals, staples…"
                   className={searchInputClassName}
                 />
               </InputGroup>
             </FieldContent>
           </Field>
-        </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            Start broad, then narrow to the strongest verified option before checkout.
-          </p>
-          <Button type="submit" size="lg" className="w-full rounded-full sm:w-auto sm:min-w-44">
-            Search network
+          <Button type="submit" size="lg" className="w-full rounded-full lg:w-auto lg:min-w-40">
+            Search
           </Button>
         </div>
       </FieldGroup>
-
-      {!compact ? (
-        <div className="flex flex-wrap gap-2">
-          {CATEGORY_OPTIONS.map((option) => {
-            const active = option.value === category;
-            return (
-              <Button
-                key={option.value}
-                type="button"
-                variant={active ? 'default' : 'outline'}
-                size="sm"
-                className="rounded-full"
-                onClick={() => setCategory(option.value)}
-              >
-                {option.label}
-              </Button>
-            );
-          })}
-        </div>
-      ) : null}
     </form>
   );
 }

@@ -1,6 +1,7 @@
 /**
- * AUTH-COMPOSITION: deployed_public_mode=compatibility_probe_only
- * AUTH-COMPOSITION: local_dev_mode=identity_session_experiment
+ * Portfolio SSO via AadhaarChain gateway cookie.
+ * Local dev: set VITE_IDENTITY_AUTH_ENABLED=true in .env.local.
+ * Login redirects to VITE_IDENTITY_WEB_URL/login with aud=ondcbuyer.
  */
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
@@ -63,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (returnUrl = '/') => {
     const encodedReturn = encodeURIComponent(window.location.origin + returnUrl);
-    window.location.href = `${IDENTITY_WEB_URL}/login?return=${encodedReturn}`;
+    window.location.href = `${IDENTITY_WEB_URL}/login?return=${encodedReturn}&aud=ondcbuyer`;
   };
 
   const logout = async () => {

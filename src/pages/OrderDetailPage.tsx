@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useWallet } from '@solana/wallet-adapter-react';
 import { ChevronLeft, MapPin, Truck } from 'lucide-react';
 import { TrustNotice } from '../components/TrustStatus';
-import { useTrustState } from '../hooks';
+import { useTrustState, useSubject } from '../hooks';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { cancelVerifiedDemoOrder, getDemoOrder } from '../lib/localOrders';
 import { fetchBuyerOrder } from '../lib/orderApi';
@@ -80,8 +79,7 @@ function formatPrice(currency: string, value: string | undefined, quantity = 1) 
 export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { publicKey } = useWallet();
-  const walletAddress = publicKey?.toBase58() ?? null;
+  const { walletAddress } = useSubject();
   const trust = useTrustState(walletAddress);
   const [order, setOrder] = useState<UCPOrder | null>(null);
   const [loading, setLoading] = useState(true);

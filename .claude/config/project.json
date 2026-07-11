@@ -1,8 +1,8 @@
 {
   "project_type": "react",
-  "dev_server_port": 3000,
+  "dev_server_port": 43102,
   "test_command": "npm test",
-  "health_check": "curl -sf http://localhost:3000/",
+  "health_check": "curl -sf http://127.0.0.1:43102/",
   "init_script": "./scripts/init.sh",
   "required_env": [],
   "required_services": []

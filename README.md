@@ -10,7 +10,7 @@ It does not verify identity documents and it must not receive raw Aadhaar, PAN, 
 | --- | --- |
 | Buyer frontend | `http://127.0.0.1:43102` |
 | AadhaarChain gateway | `http://127.0.0.1:43101` |
-| Agent control plane | `http://127.0.0.1:8100` |
+| Agent control plane (FlatWatch) | `http://127.0.0.1:43104` |
 
 ## Environment
 
@@ -18,7 +18,7 @@ It does not verify identity documents and it must not receive raw Aadhaar, PAN, 
 VITE_AADHAAR_API_URL=http://127.0.0.1:43101
 VITE_BUYER_COMMERCE_URL=http://127.0.0.1:43102
 VITE_COMMERCE_DEMO_MODE=true
-VITE_AGENT_CONTROL_PLANE_URL=http://127.0.0.1:8100
+VITE_AGENT_CONTROL_PLANE_URL=http://127.0.0.1:43104
 VITE_AGENT_RUNTIME_ENABLED=false
 ```
 

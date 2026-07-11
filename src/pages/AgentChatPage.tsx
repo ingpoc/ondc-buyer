@@ -201,7 +201,7 @@ function SnapshotPanel({ snapshot }: { snapshot: BuyerAgentSnapshot }) {
       <SnapshotCard
         label="Catalog"
         value={String(snapshot.catalog.total_items)}
-        helper="Mock buyer inventory available to the Claude tool layer."
+        helper="Mock buyer inventory available to the agent tool layer."
       />
       <SnapshotCard
         label="Cart"
@@ -530,10 +530,10 @@ export function AgentChatPage(): JSX.Element {
 
       {subjectId && !runtime.runtime_available ? (
         <NoticeCard
-          title="Claude runtime unavailable"
+          title="Cursor runtime unavailable"
           description={
             runtime.blocked_reason ??
-            'Configure supported Claude Agent SDK auth or use the local Claude CLI dev adapter on localhost.'
+            'Set CURSOR_API_KEY on the FlatWatch backend (:43104) and restart the dev stack.'
           }
         />
       ) : null}
@@ -641,7 +641,7 @@ export function AgentChatPage(): JSX.Element {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Claude uses a locked-down buyer tool layer for search, product detail, cart state,
+                The agent uses a locked-down buyer tool layer for search, product detail, cart state,
                 order status, and trust-aware checkout guidance.
               </p>
             </CardFooter>
@@ -658,7 +658,7 @@ export function AgentChatPage(): JSX.Element {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                The brief reflects the structured result after Claude uses the locked-down buyer
+                The brief reflects the structured result after the agent uses the locked-down buyer
                 tool layer.
               </CardContent>
             </Card>

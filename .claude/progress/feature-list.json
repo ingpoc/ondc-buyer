@@ -291,9 +291,9 @@
       "status": "implemented",
       "acceptance": [
         "useAuth() hook with user state",
-        "Fetch user from https://aadharcha.in/api/auth/me with credentials: include",
-        "login() redirects to aadharcha.in/login",
-        "logout() calls aadharcha.in/api/auth/logout",
+        "Fetch user from VITE_IDENTITY_URL/api/auth/me with credentials: include",
+        "login() redirects to VITE_IDENTITY_WEB_URL/login?return=…&aud=ondcbuyer",
+        "logout() calls VITE_IDENTITY_URL/api/auth/logout",
         "isAuthenticated boolean flag"
       ],
       "plan_references": [
@@ -310,7 +310,7 @@
         "Axios instance with base URL",
         "credentials: include for all requests",
         "Session validation wrapper",
-        "Auto-redirect to aadharcha.in/login if not authenticated",
+        "Auto-redirect to VITE_IDENTITY_WEB_URL/login when auth enabled and unauthenticated",
         "X-User-ID header for user identification"
       ],
       "plan_references": [
@@ -326,7 +326,7 @@
       "acceptance": [
         "ProtectedRoute component",
         "Validate session before rendering",
-        "Redirect to aadharcha.in/login if not authenticated",
+        "Redirect to VITE_IDENTITY_WEB_URL/login when auth enabled and unauthenticated",
         "Loading state during validation"
       ],
       "plan_references": [
@@ -340,8 +340,9 @@
       "tier": "mvp",
       "status": "implemented",
       "acceptance": [
-        "VITE_IDENTITY_URL=https://aadharcha.in",
-        "Local: VITE_IDENTITY_URL=http://localhost:3000",
+        "VITE_IDENTITY_URL=http://127.0.0.1:43101",
+        "VITE_IDENTITY_WEB_URL=http://127.0.0.1:43100",
+        "VITE_IDENTITY_AUTH_ENABLED=true for local SSO testing",
         "Config typed and exported"
       ],
       "plan_references": [
@@ -355,7 +356,7 @@
       "tier": "mvp",
       "status": "implemented",
       "acceptance": [
-        "/login page redirects to aadharcha.in/login",
+        "Login at VITE_IDENTITY_WEB_URL/login with return URL and aud=ondcbuyer",
         "Return URL parameter for redirect back",
         "Loading message while redirecting"
       ],

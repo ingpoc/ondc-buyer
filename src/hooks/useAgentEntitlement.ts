@@ -5,7 +5,7 @@ import { buildAgentControlPlaneUrl } from '@/lib/agentControlPlane';
 const DEFAULT_RUNTIME: AgentRuntimeSnapshot = {
   app_id: 'ondc-buyer',
   auth_mode: 'unavailable',
-  model: 'claude-haiku-4-5-20251001',
+  model: 'composer-2.5',
   runtime_available: false,
   agent_access: false,
   trust_state: 'no_identity',

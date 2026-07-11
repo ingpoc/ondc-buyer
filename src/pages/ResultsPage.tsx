@@ -50,7 +50,8 @@ export function ResultsPage(): JSX.Element {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const category = searchParams.get('category') ?? 'grocery';
-  const query = searchParams.get('q') ?? '';
+  const rawQuery = searchParams.get('q') ?? '';
+  const query = rawQuery === 'undefined' ? '' : rawQuery;
   const { addToCart } = useCart();
   const [filters, setFilters] = useState<SearchFilters>({});
 
@@ -75,7 +76,8 @@ export function ResultsPage(): JSX.Element {
   }, [execute]);
 
   function handleSearch(nextCategory: string, nextQuery: string): void {
-    navigate(`/results?category=${nextCategory}&q=${encodeURIComponent(nextQuery)}`);
+    const normalized = String(nextQuery ?? '').trim();
+    navigate(`/results?category=${nextCategory}&q=${encodeURIComponent(normalized)}`);
   }
 
   function handleItemClick(item: UCPItem): void {

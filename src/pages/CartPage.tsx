@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
-import { useCart } from '../hooks';
+import { useCart, useSubject, useTrustState } from '../hooks';
 import { CartItem, CartSummary } from '../components/CartComponents';
+import { TrustNotice } from '../components/TrustStatus';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
@@ -15,6 +16,8 @@ import { Spinner } from '../components/ui/spinner';
 
 export function CartPage(): JSX.Element {
   const navigate = useNavigate();
+  const { walletAddress } = useSubject();
+  const trust = useTrustState(walletAddress);
   const {
     session,
     loading,
@@ -86,6 +89,16 @@ export function CartPage(): JSX.Element {
           {itemCount} {itemLabel} ready for trust-aware checkout.
         </p>
       </section>
+
+      {trust.state !== 'verified' && !trust.loading ? (
+        <TrustNotice
+          state={trust.state}
+          loading={trust.loading}
+          error={trust.error}
+          reason={trust.reason}
+          actionLabel="Verify on AadhaarChain"
+        />
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">

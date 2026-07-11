@@ -4,8 +4,9 @@ import { useAuthContext } from '@/contexts/AuthContext';
 export function useSubject() {
   const { publicKey } = useWallet();
   const { user, loading: authLoading } = useAuthContext();
-  const walletAddress = publicKey?.toBase58() ?? null;
-  const subjectId = user?.wallet_address ?? walletAddress;
+  const adapterWallet = publicKey?.toBase58() ?? null;
+  const walletAddress = user?.wallet_address ?? adapterWallet;
+  const subjectId = walletAddress;
 
   return {
     authLoading,

@@ -34,6 +34,9 @@ import {
 import { normalizeLoopbackUrl } from './lib/loopback';
 import type { PortfolioTrustState } from './lib/trust';
 import { cn } from './lib/utils';
+import { useAuthContext } from './contexts/AuthContext';
+
+const IDENTITY_AUTH_ENABLED = import.meta.env.VITE_IDENTITY_AUTH_ENABLED === 'true';
 
 type NavItem = {
   href: string;
@@ -45,8 +48,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/search', label: 'Search' },
   { href: '/cart', label: 'Cart' },
   { href: '/orders', label: 'Orders' },
+];
+
+const SECONDARY_NAV_ITEMS: NavItem[] = [
   { href: '/agent', label: 'Agent' },
-  { href: '/usecase.html#agents', label: 'Use Case', external: true },
+  { href: '/usecase.html#agents', label: 'How it works', external: true },
 ];
 
 const IDENTITY_WEB_URL = normalizeLoopbackUrl(
@@ -200,7 +206,8 @@ function HeaderSearch({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    onSearch(String(formData.get('query') || '').trim());
+    const query = String(formData.get('query') ?? '').trim();
+    onSearch(query);
     onCollapse?.();
   }
 
@@ -323,7 +330,7 @@ export function HeaderStatusRail({
               asChild
               className={cn('rounded-full border-0 px-3 text-xs', trustMeta.className)}
             >
-              <a href={`${IDENTITY_WEB_URL}/dashboard`} title={trustMeta.detail}>
+              <a href={`${IDENTITY_WEB_URL}/home`} title={trustMeta.detail}>
                 <TrustIcon className="size-3.5" />
                 <span>Trust</span>
                 <span className="font-medium">{trustMeta.label.replace(/^Trust /, '')}</span>
@@ -353,6 +360,7 @@ export function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const { walletAddress, subjectId } = useSubject();
+  const { isAuthenticated, loading: authLoading, login, logout } = useAuthContext();
   const trust = useTrustState(walletAddress);
   const runtime = useAgentRuntime(subjectId, walletAddress);
   const activePath = getActivePath(location.pathname);
@@ -374,8 +382,9 @@ export function App() {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [activeHeaderControl]);
 
-  const handleSearch = (query: string) => {
-    navigate(`/results?category=grocery&q=${encodeURIComponent(query)}`);
+  const handleSearch = (query?: string) => {
+    const normalized = String(query ?? '').trim();
+    navigate(`/results?category=grocery&q=${encodeURIComponent(normalized)}`);
   };
 
   const toggleHeaderControl = (control: Exclude<HeaderControl, null>) => {
@@ -415,6 +424,37 @@ export function App() {
                         />
                       ))}
                     </div>
+                    <div className="grid gap-2 border-t border-border/60 pt-4">
+                      {SECONDARY_NAV_ITEMS.map((item) => (
+                        <NavigationLink
+                          key={item.href}
+                          href={item.href}
+                          label={item.label}
+                          active={activePath === item.href}
+                          external={item.external}
+                        />
+                      ))}
+                    </div>
+                    {IDENTITY_AUTH_ENABLED && !authLoading ? (
+                      isAuthenticated ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full rounded-full"
+                          onClick={() => void logout()}
+                        >
+                          Sign out
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          className="w-full rounded-full"
+                          onClick={() => login(location.pathname)}
+                        >
+                          Login with AadhaarChain
+                        </Button>
+                      )
+                    ) : null}
                   </div>
                 </SheetContent>
               </Sheet>
@@ -477,6 +517,28 @@ export function App() {
               activeControl={activeHeaderControl}
               onToggle={toggleHeaderControl}
             />
+            {IDENTITY_AUTH_ENABLED && !authLoading ? (
+              isAuthenticated ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => void logout()}
+                >
+                  Sign out
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => login(location.pathname)}
+                >
+                  Login with AadhaarChain
+                </Button>
+              )
+            ) : null}
             <WalletMultiButton style={WALLET_BUTTON_STYLE} />
           </div>
         </div>
@@ -484,7 +546,7 @@ export function App() {
 
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Routes>
-          <Route path="/" element={<SearchPage />} />
+          <Route path="/" element={<Navigate to="/search" replace />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/results" element={<ResultsPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
@@ -493,8 +555,19 @@ export function App() {
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/search" replace />} />
         </Routes>
+        <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-4 border-t border-border/60 px-4 py-6 text-sm text-muted-foreground sm:px-6 lg:px-8">
+          {SECONDARY_NAV_ITEMS.map((item) => (
+            <NavigationLink
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              active={activePath === item.href}
+              external={item.external}
+            />
+          ))}
+        </footer>
       </main>
     </Fragment>
   );

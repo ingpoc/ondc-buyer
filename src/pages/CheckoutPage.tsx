@@ -1,14 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '@solana/wallet-adapter-react';
 import { BillingForm } from '../components/BillingForm';
 import { PaymentSelector, type PaymentMethod } from '../components/PaymentSelector';
 import { QuoteDisplay } from '../components/QuoteDisplay';
 import { TrustNotice } from '../components/TrustStatus';
-import { useCart, useTrustState } from '../hooks';
+import { useCart, useSubject, useTrustState } from '../hooks';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { createLocalQuote } from '../lib/localCart';
 import { createVerifiedDemoOrder } from '../lib/localOrders';
+import {
+  consumeBuyerCheckoutApproval,
+  evaluateBuyerCheckout,
+} from '../lib/agentGuardCheckout';
 import {
   buildProtectedBuyerActionHeaders,
   buildProtectedBuyerActionPolicy,
@@ -138,12 +141,14 @@ function CartSummary({ currency }: { currency: string }) {
 
 export function CheckoutPage() {
   const navigate = useNavigate();
-  const { publicKey } = useWallet();
+  const { walletAddress } = useSubject();
   const { session, loading, error, itemCount, refreshCart } = useCart();
-  const trust = useTrustState(publicKey?.toBase58() ?? null);
+  const trust = useTrustState(walletAddress);
   const [quote, setQuote] = useState<UCPQuote | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pendingCheckoutApprovalId, setPendingCheckoutApprovalId] = useState<string | null>(null);
+  const [agentGuardNote, setAgentGuardNote] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [deliveryAddress, setDeliveryAddress] = useState<UCPAddress>({
     line1: '',
@@ -177,11 +182,53 @@ export function CheckoutPage() {
       if (!sessionId) {
         throw new Error('No session found');
       }
-      const walletAddress = publicKey?.toBase58() ?? null;
 
       if (COMMERCE_DEMO_MODE) {
         if (!session) {
           throw new Error('No session found');
+        }
+        if (!walletAddress) {
+          throw new Error('Sign in with AadhaarChain before elevated checkout.');
+        }
+        const amountInr = Math.round(
+          Number(quote?.total?.value ?? quote?.price?.value ?? 0) ||
+            session.items.reduce(
+              (sum, item) =>
+                sum + parseFloat(item.item.price?.value || '0') * item.quantity,
+              0,
+            ),
+        );
+        const decision = await evaluateBuyerCheckout({
+          walletAddress,
+          amountInr,
+          sessionId,
+        });
+        if (decision.decision === 'deny') {
+          setSubmitError(decision.reason);
+          setAgentGuardNote(decision.reason);
+          return;
+        }
+        if (decision.decision === 'need_approval' && decision.approval) {
+          setAgentGuardNote(decision.reason);
+          try {
+            await consumeBuyerCheckoutApproval({
+              walletAddress,
+              approvalId: decision.approval.approval_id,
+            });
+            setPendingCheckoutApprovalId(decision.approval.approval_id);
+            setAgentGuardNote(
+              `Checkout approved once. Receipt recorded for INR ${amountInr}.`,
+            );
+          } catch (consumeErr) {
+            setSubmitError(
+              consumeErr instanceof Error
+                ? consumeErr.message
+                : 'Checkout approval already consumed (replay rejected).',
+            );
+            return;
+          }
+        } else if (decision.receipt) {
+          setAgentGuardNote(`Checkout allowed. Receipt ${decision.receipt.receipt_id}.`);
         }
         if (quote) {
           const order = createVerifiedDemoOrder(
@@ -299,6 +346,12 @@ export function CheckoutPage() {
         reason={trust.reason}
         actionLabel="Resolve trust in AadhaarChain"
       />
+
+      {agentGuardNote ? (
+        <p className="text-sm text-muted-foreground" data-testid="buyer-agentguard-note">
+          {agentGuardNote}
+        </p>
+      ) : null}
 
       {submitError ? (
         <Card className="border-border/70 bg-secondary/80 text-foreground shadow-none">
