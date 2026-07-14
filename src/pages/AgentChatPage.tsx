@@ -1,3 +1,4 @@
+import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Loader2 } from 'lucide-react';
@@ -10,7 +11,10 @@ import {
   buildBuyerAgentSnapshot,
   extractBuyerAgentEnvelope,
 } from '../lib/agentBuyerState';
+import { BUYER_TOOL_DEFINITIONS, runBuyerTool } from '../lib/agentTools';
 import { buildAgentControlPlaneUrl } from '../lib/agentControlPlane';
+import { runBuyerRuntimeTask } from '../lib/runBuyerRuntimeTask';
+import { consumeBuyerRuntimeHandoff } from '../lib/samanthaRuntimeHandoff';
 import {
   buildProtectedBuyerActionHeaders,
   buildProtectedBuyerActionPolicy,
@@ -20,7 +24,6 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Textarea } from '../components/ui/textarea';
-
 interface BuyerChatMessage {
   role: 'user' | 'assistant' | 'error';
   content: string;
@@ -120,59 +123,6 @@ function actionBadgeClass(action: BuyerAgentAction) {
   return 'bg-primary/10 text-primary';
 }
 
-async function processBuyerStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  handlers: {
-    onDelta: () => void;
-    onResult: (content: string) => Promise<void> | void;
-    onError: (error: string) => void;
-    onDone: () => void;
-  },
-) {
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      handlers.onDone();
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-
-    for (const line of lines) {
-      if (!line.startsWith('data:')) {
-        continue;
-      }
-
-      const data = line.replace(/^data:\s*/, '').trim();
-      if (!data || data === '[DONE]') {
-        continue;
-      }
-
-      try {
-        const event = JSON.parse(data) as { type?: string; content?: string; error?: string };
-        if (event.type === 'assistant_delta') {
-          handlers.onDelta();
-        } else if (event.type === 'result' && typeof event.content === 'string') {
-          await handlers.onResult(event.content);
-        } else if (event.type === 'error' && typeof event.error === 'string') {
-          handlers.onError(event.error);
-        }
-      } catch (error) {
-        handlers.onError(
-          error instanceof Error
-            ? error.message
-            : 'Failed to parse buyer agent stream.',
-        );
-      }
-    }
-  }
-}
-
 function SnapshotCard({
   label,
   value,
@@ -259,7 +209,7 @@ function NoticeCard({
 export function AgentChatPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const { walletAddress, subjectId, authLoading } = useSubject();
+  const { walletAddress, subjectId, principalId, authLoading } = useSubject();
   const trust = useTrustState(walletAddress);
   const runtime = useAgentRuntime(subjectId, walletAddress);
   const { session: cartSession, addToCart } = useCart();
@@ -285,6 +235,7 @@ export function AgentChatPage(): JSX.Element {
   const latestSummaryRef = useRef(latestSummary);
   const latestActionsRef = useRef(latestActions);
   const trustBlockReasonRef = useRef(trustBlockReason);
+  const handoffConsumedRef = useRef(false);
 
   const showAgent = Boolean(subjectId) && runtime.agent_access;
   const usageLabel =
@@ -299,9 +250,9 @@ export function AgentChatPage(): JSX.Element {
         trust.state,
         cartSession,
         getMockBuyerItems(),
-        listDemoOrders(),
+        listDemoOrders(subjectId),
       ),
-    [cartSession, location.pathname, location.search, trust.state],
+    [cartSession, location.pathname, location.search, subjectId, trust.state],
   );
 
   function commitUiState(next: PersistedBuyerAgentUiState) {
@@ -316,8 +267,8 @@ export function AgentChatPage(): JSX.Element {
     persistUiState(next);
   }
 
-  async function sendMessage() {
-    const prompt = input.trim();
+  async function sendMessage(promptOverride?: string) {
+    const prompt = (promptOverride ?? input).trim();
     if (!prompt || isLoading || !subjectId) {
       return;
     }
@@ -344,45 +295,29 @@ export function AgentChatPage(): JSX.Element {
 
     try {
       const trustPolicy =
-        trust.state === 'verified'
+        elevatedTrustSatisfied(trust.state, principalId)
           ? buildProtectedBuyerActionPolicy({
               action: 'agent_write',
               walletAddress,
-              trustState: trust.state,
+              trustState: effectiveElevatedTrustState(trust.state, principalId),
               subjectId,
               auditSubjectId: sessionIdRef.current,
             })
           : null;
 
-      const response = await fetch(buildAgentControlPlaneUrl('/api/agent/buyer'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': subjectId,
-          ...(walletAddress ? { 'X-Wallet-Address': walletAddress } : {}),
-          ...(trustPolicy ? buildProtectedBuyerActionHeaders(trustPolicy) : {}),
+      await runBuyerRuntimeTask({
+        prompt,
+        sessionId: sessionIdRef.current,
+        subjectId,
+        walletAddress,
+        headers: trustPolicy ? buildProtectedBuyerActionHeaders(trustPolicy) : undefined,
+        context: {
+          buyer_snapshot: snapshot,
+          response_contract: 'buyer_agent_v1',
+          trust_policy: trustPolicy,
+          agentguard_tools: BUYER_TOOL_DEFINITIONS,
+          tool_runner: 'ondcbuyer/agentTools',
         },
-        body: JSON.stringify({
-          prompt,
-          sessionId: sessionIdRef.current,
-          context: {
-            buyer_snapshot: snapshot,
-            response_contract: 'buyer_agent_v1',
-            trust_policy: trustPolicy,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response body returned by the buyer agent.');
-      }
-
-      await processBuyerStream(reader, {
         onDelta: () => setStreaming(true),
         onResult: async (content) => {
           const envelope = extractBuyerAgentEnvelope(content);
@@ -406,6 +341,23 @@ export function AgentChatPage(): JSX.Element {
           const result = applyBuyerAgentEnvelope(envelope, snapshot, trust.state);
           for (const item of result.itemsToAdd) {
             await addToCart(item.item, item.quantity);
+          }
+
+          // Tool runner: search/navigate under AgentGuard-aware helpers when agent routes to results.
+          if (walletAddress && result.navigateTo?.startsWith('/results')) {
+            const q = new URLSearchParams(result.navigateTo.split('?')[1] || '').get('q');
+            if (q) {
+              await runBuyerTool('search_catalog', { query: q }, { walletAddress });
+            }
+          }
+          for (const action of envelope.actions) {
+            if (action.type === 'cart_add' && walletAddress) {
+              await runBuyerTool(
+                'add_to_cart',
+                { item_id: action.item_id, quantity: action.quantity },
+                { walletAddress },
+              );
+            }
           }
 
           commitUiState({
@@ -475,18 +427,25 @@ export function AgentChatPage(): JSX.Element {
     trustBlockReasonRef.current = trustBlockReason;
   }, [latestActions, latestSummary, messages, trustBlockReason]);
 
+  useEffect(() => {
+    if (!showAgent || isLoading || handoffConsumedRef.current) return;
+    const handoff = consumeBuyerRuntimeHandoff();
+    if (!handoff?.task) return;
+    handoffConsumedRef.current = true;
+    if (handoff.sessionId) {
+      sessionIdRef.current = handoff.sessionId;
+      window.localStorage.setItem(SESSION_STORAGE_KEY, handoff.sessionId);
+    }
+    void sendMessage(handoff.task);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot Samantha handoff on mount/access
+  }, [showAgent, isLoading]);
+
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-          Buyer agent
-        </div>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Buyer agent assistant
-        </h1>
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
-          Use the buyer cockpit to search, compare, add items to cart, and route into checkout
-          with trust-aware execution.
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Ask Samantha</h1>
+        <p className="max-w-[55ch] text-base leading-relaxed text-muted-foreground">
+          Search, compare, and cart with trust-aware tools under AgentGuard.
         </p>
       </section>
 
@@ -504,13 +463,13 @@ export function AgentChatPage(): JSX.Element {
         <Badge
           variant="secondary"
           className={
-            trust.state === 'verified'
+            elevatedTrustSatisfied(trust.state, principalId)
               ? 'rounded-full bg-primary/15 text-primary'
               : 'rounded-full bg-secondary text-secondary-foreground'
           }
         >
-          {trust.state === 'verified'
-            ? 'High-trust write access enabled'
+          {elevatedTrustSatisfied(trust.state, principalId)
+            ? 'Elevated actions available'
             : 'Read-only buyer guidance'}
         </Badge>
         <Badge variant="outline" className="rounded-full">
@@ -524,7 +483,7 @@ export function AgentChatPage(): JSX.Element {
       {!subjectId && !authLoading ? (
         <NoticeCard
           title="Authentication required"
-          description="Sign in to AadhaarChain or connect a wallet-backed identity before starting a buyer agent session."
+          description="Sign in before starting a buyer agent session."
         />
       ) : null}
 
@@ -538,19 +497,19 @@ export function AgentChatPage(): JSX.Element {
         />
       ) : null}
 
-      {subjectId && runtime.agent_access && trust.state !== 'verified' ? (
+      {subjectId && runtime.agent_access && !elevatedTrustSatisfied(trust.state, principalId) ? (
         <TrustNotice
           state={trust.state}
           loading={trust.loading}
           error={trust.error}
           reason={trust.reason}
-          actionLabel="Verify in AadhaarChain"
         />
       ) : null}
 
       <SnapshotPanel snapshot={snapshot} />
 
       {showAgent ? (
+        <div className="space-y-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
           <Card className="border-border/70 bg-card/95 shadow-md">
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -705,6 +664,7 @@ export function AgentChatPage(): JSX.Element {
               </CardContent>
             </Card>
           </div>
+        </div>
         </div>
       ) : null}
     </div>

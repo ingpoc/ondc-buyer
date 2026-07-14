@@ -117,6 +117,38 @@ const MOCK_BUYER_ITEMS: UCPItem[] = [
     category: 'fruits',
     _provider: 'City Greens',
   },
+  {
+    id: 'toned-milk-1l',
+    name: 'Toned Milk 1L',
+    description: 'Fresh toned milk under one hundred rupees for daily grocery carts.',
+    descriptor: {
+      name: 'Toned Milk 1L',
+      short_desc: 'Budget dairy staple under INR 100.',
+    },
+    price: {
+      currency: 'INR',
+      value: '58.00',
+    },
+    images: [],
+    category: 'dairy',
+    _provider: 'City Dairy',
+  },
+  {
+    id: 'full-cream-milk-1l',
+    name: 'Full Cream Milk 1L',
+    description: 'Full cream milk priced under one hundred rupees.',
+    descriptor: {
+      name: 'Full Cream Milk 1L',
+      short_desc: 'Richer dairy option still under INR 100.',
+    },
+    price: {
+      currency: 'INR',
+      value: '72.00',
+    },
+    images: [],
+    category: 'dairy',
+    _provider: 'City Dairy',
+  },
 ];
 
 export function getMockBuyerItems(): UCPItem[] {
@@ -126,6 +158,17 @@ export function getMockBuyerItems(): UCPItem[] {
     price: item.price ? { ...item.price } : item.price,
     images: Array.isArray(item.images) ? item.images.map((image) => ({ ...image })) : item.images,
   }));
+}
+
+/** Grocery lane includes produce; SearchBar defaults to grocery. */
+function matchesBuyerCategory(itemCategory: string | undefined, requested: string): boolean {
+  if (!requested) return true;
+  const item = String(itemCategory || '').toLowerCase();
+  if (item === requested) return true;
+  if (requested === 'grocery' && (item === 'fruits' || item === 'grocery' || item === 'dairy')) {
+    return true;
+  }
+  return false;
 }
 
 function filterItems(endpoint: string) {
@@ -147,7 +190,7 @@ function filterItems(endpoint: string) {
       .join(' ')
       .toLowerCase();
 
-    const matchesCategory = !category || String(item.category || '').toLowerCase() === category;
+    const matchesCategory = matchesBuyerCategory(item.category, category);
     const matchesTerm = !term || haystack.includes(term);
     return matchesCategory && matchesTerm;
   });

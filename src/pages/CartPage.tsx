@@ -3,6 +3,7 @@ import { ShoppingBag } from 'lucide-react';
 import { useCart, useSubject, useTrustState } from '../hooks';
 import { CartItem, CartSummary } from '../components/CartComponents';
 import { TrustNotice } from '../components/TrustStatus';
+import { elevatedTrustSatisfied } from '../lib/trust';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
@@ -16,8 +17,9 @@ import { Spinner } from '../components/ui/spinner';
 
 export function CartPage(): JSX.Element {
   const navigate = useNavigate();
-  const { walletAddress } = useSubject();
+  const { walletAddress, principalId } = useSubject();
   const trust = useTrustState(walletAddress);
+  const elevatedOk = elevatedTrustSatisfied(trust.state, principalId);
   const {
     session,
     loading,
@@ -81,22 +83,18 @@ export function CartPage(): JSX.Element {
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-          Cart
-        </div>
         <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Shopping cart</h1>
-        <p className="text-sm text-muted-foreground sm:text-base">
+        <p className="text-base text-muted-foreground">
           {itemCount} {itemLabel} ready for trust-aware checkout.
         </p>
       </section>
 
-      {trust.state !== 'verified' && !trust.loading ? (
+      {!elevatedOk && !trust.loading ? (
         <TrustNotice
           state={trust.state}
           loading={trust.loading}
           error={trust.error}
           reason={trust.reason}
-          actionLabel="Verify on AadhaarChain"
         />
       ) : null}
 

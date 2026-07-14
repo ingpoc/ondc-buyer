@@ -101,7 +101,7 @@ export function ResultGrid({
           </CardHeader>
 
           <CardContent className="space-y-3">
-            <div className="text-2xl font-semibold tracking-tight">{formatPrice(item)}</div>
+            <div className="quant text-2xl font-semibold tracking-tight">{formatPrice(item)}</div>
             <div className="text-sm text-muted-foreground">
               Seller: {item.provider?.name || item._provider || 'Unknown provider'}
             </div>

@@ -1,4 +1,4 @@
-import type { PortfolioTrustState } from './trust';
+import { sessionSkipsLegacyTrust, type PortfolioTrustState } from './trust';
 import { assertCanExecuteProtectedBuyerAction } from './buyerActionPolicy';
 
 export type ProtectedBuyerAction =
@@ -45,14 +45,17 @@ export function buildProtectedBuyerActionPolicy(
 ): ProtectedBuyerActionPolicy {
   assertCanExecuteProtectedBuyerAction(context.trustState);
 
-  if (!context.walletAddress) {
-    throw new Error('Wallet address is required before protected buyer actions can be sent.');
+  const sessionPrincipal = sessionSkipsLegacyTrust(context.subjectId);
+  if (!context.walletAddress && !sessionPrincipal) {
+    throw new Error('Sign in is required before protected buyer actions can be sent.');
   }
+
+  const walletOrSubject = context.walletAddress ?? context.subjectId ?? '';
 
   return {
     action: context.action,
     required_trust_state: 'verified',
-    wallet_address: context.walletAddress,
+    wallet_address: walletOrSubject,
     subject_id: context.subjectId ?? null,
     audit_subject_id: context.auditSubjectId,
     audit_reference_id: context.auditReferenceId ?? null,

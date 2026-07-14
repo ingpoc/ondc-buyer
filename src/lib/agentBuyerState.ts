@@ -251,7 +251,7 @@ export function applyBuyerAgentEnvelope(
 
     if (action.type === 'navigate') {
       if (action.path === '/checkout' && trustState !== 'verified') {
-        trustBlockReason = 'Buyer checkout requires a verified AadhaarChain trust state before the agent can route into high-trust execution.';
+        trustBlockReason = 'Buyer checkout requires sign-in or verified trust before the agent can route into elevated execution.';
         continue;
       }
       navigateTo = action.path;

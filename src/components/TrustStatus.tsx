@@ -3,13 +3,8 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { cn } from '../lib/utils';
-import { normalizeLoopbackUrl } from '../lib/loopback';
 import { TRUST_STATE_META } from '@portfolio/trust-client';
 import type { PortfolioTrustState } from '../lib/trust';
-
-const IDENTITY_WEB_URL = normalizeLoopbackUrl(
-  import.meta.env.VITE_IDENTITY_WEB_URL || 'http://127.0.0.1:43100',
-);
 
 const STATE_META: Record<
   PortfolioTrustState,
@@ -21,7 +16,7 @@ const STATE_META: Record<
   }
 > = {
   no_identity: {
-    label: 'No identity',
+    label: 'Unsigned',
     chipClassName: 'bg-muted text-muted-foreground',
     panelClassName: 'border-border/70 bg-card text-foreground',
     icon: ShieldAlert,
@@ -74,10 +69,7 @@ export function TrustStatusChip({
   const meta = STATE_META[state];
 
   return (
-    <a
-      href={`${IDENTITY_WEB_URL}/home`}
-      className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:border-primary/30 hover:text-primary"
-    >
+    <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-foreground shadow-sm">
       <span
         className={cn(
           'inline-flex size-2.5 rounded-full',
@@ -85,7 +77,7 @@ export function TrustStatusChip({
         )}
       />
       {loading ? 'Trust loading' : `Trust ${meta.label}`}
-    </a>
+    </span>
   );
 }
 
@@ -94,23 +86,30 @@ export function TrustNotice({
   loading,
   error,
   reason,
-  actionLabel = 'Open AadhaarChain',
+  actionLabel = 'Sign in',
+  actionHref,
+  hideAction,
 }: {
   state: PortfolioTrustState;
   loading?: boolean;
   error?: string | null;
   reason?: string | null;
   actionLabel?: string;
+  /** Legacy hangar identity host only. Prefer header Google/Demo sign-in. */
+  actionHref?: string;
+  hideAction?: boolean;
 }) {
+  const showAction = hideAction === false || (hideAction == null && Boolean(actionHref));
+
   if (loading) {
     return (
       <Card className="border-border/70 bg-card/80">
         <CardContent className="flex items-start gap-3 py-5">
           <ShieldAlert className="mt-0.5 size-4 text-muted-foreground" />
           <div className="space-y-1">
-            <div className="text-sm font-semibold">Loading AadhaarChain trust state</div>
+            <div className="text-sm font-semibold">Loading trust state</div>
             <p className="text-sm text-muted-foreground">
-              Checking verification signals before enabling elevated buyer actions.
+              Checking session signals before enabling elevated buyer actions.
             </p>
           </div>
         </CardContent>
@@ -132,19 +131,21 @@ export function TrustNotice({
           <Icon className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-2">
             <Badge variant="secondary" className={cn('rounded-full border-0', meta.chipClassName)}>
-              AadhaarChain trust check: {meta.label}
+              Trust check: {meta.label}
             </Badge>
             <p className="max-w-2xl text-sm leading-6">
               {trustMessage(state, reason, error)}
             </p>
           </div>
         </div>
-        <Button asChild variant="outline" className="rounded-full">
-          <a href={`${IDENTITY_WEB_URL}/home`}>
-            {actionLabel}
-            <ArrowUpRight className="size-4" />
-          </a>
-        </Button>
+        {showAction && actionHref ? (
+          <Button asChild variant="outline" className="rounded-full">
+            <a href={actionHref}>
+              {actionLabel}
+              <ArrowUpRight className="size-4" />
+            </a>
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );

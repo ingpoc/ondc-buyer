@@ -146,8 +146,7 @@ export function ProductDetailPage(): JSX.Element {
                 Buyer note
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                Add the strongest candidate to cart, then continue into checkout once AadhaarChain
-                trust verification is ready for elevated actions.
+                Add the strongest candidate to cart, then continue into checkout under AgentGuard.
               </p>
             </div>
 

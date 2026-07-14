@@ -4,8 +4,8 @@
  * AUTH-COMPOSITION: local_dev_mode=identity_session_experiment
  *
  * Identity-session compatibility client:
- * - local and explicitly configured dev flows may exercise AadhaarChain identity sessions
- * - deployed public behavior must not claim a working shared AadhaarChain session broker
+ * - local and explicitly configured dev flows may exercise gateway identity sessions
+ * - deployed public behavior must not claim a working shared session broker
  * - trust-state consumption stays separate from auth composition
  *
  * Compatibility endpoints:
@@ -93,7 +93,7 @@ export async function loginWithWallet(walletAddress: string): Promise<LoginResul
 
   const result = response.data;
   if (result.user) {
-    currentWalletAddress = result.user.wallet_address;
+    currentWalletAddress = result.user.wallet_address ?? null;
   }
 
   return result;
@@ -112,7 +112,7 @@ export async function validateSession(): Promise<SessionValidationResult> {
     const result = response.data;
 
     if (result.valid && result.user) {
-      currentWalletAddress = result.user.wallet_address;
+      currentWalletAddress = result.user.wallet_address ?? null;
       return { valid: true, user: result.user };
     }
 
@@ -136,7 +136,7 @@ export async function getCurrentUser(): Promise<SSOUser> {
   const user = response.data.data;
 
   if (user) {
-    currentWalletAddress = user.wallet_address;
+    currentWalletAddress = user.wallet_address ?? null;
   }
 
   return user;

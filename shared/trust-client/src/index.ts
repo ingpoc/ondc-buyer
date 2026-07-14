@@ -1,9 +1,3 @@
-/**
- * Portfolio trust-client — reconstructed from AadhaarChain gateway contracts
- * and buyer/seller/FlatWatch consumers. Missing from this workspace clone;
- * vendored so local Vite aliases resolve.
- */
-
 export type PortfolioTrustState =
   | 'no_identity'
   | 'identity_present_unverified'
@@ -57,23 +51,26 @@ export interface SignedIdentityProofResult {
   wallet_address: string;
   audience: IdentityProofAudience;
   trust_state?: PortfolioTrustState | null;
-  high_trust_eligible?: boolean;
+  high_trust_eligible: boolean;
   reason: string;
   verified_at: string;
 }
 
 export interface SSOUser {
-  wallet_address: string;
-  did?: string | null;
-  email?: string | null;
-  [key: string]: unknown;
+  principal_id?: string;
+  identity_provider?: string;
+  assurance_level?: string;
+  display_name?: string;
+  email?: string;
+  /** Legacy wallet SSO only — absent for Google/demo principals. */
+  wallet_address?: string;
+  did?: string;
 }
 
 export interface LoginResult {
   success?: boolean;
   user?: SSOUser;
   message?: string;
-  [key: string]: unknown;
 }
 
 export interface SessionValidationResult {
@@ -83,45 +80,36 @@ export interface SessionValidationResult {
 
 export const TRUST_STATE_META: Record<
   PortfolioTrustState,
-  {
-    label: string;
-    buyerActionMessage: string;
-    sellerActionMessage: string;
-  }
+  { buyerActionMessage: string; sellerActionMessage: string }
 > = {
   no_identity: {
-    label: 'No identity',
     buyerActionMessage:
-      'Create an identity anchor in AadhaarChain before elevated buyer actions.',
+      'Sign in before elevated buyer actions.',
     sellerActionMessage:
-      'Create an identity anchor in AadhaarChain before acting as a verified seller.',
+      'Sign in before elevated seller actions.',
   },
   identity_present_unverified: {
-    label: 'Unverified',
     buyerActionMessage:
-      'Complete AadhaarChain verification before checkout and other elevated buyer actions.',
+      'Identity is unverified. Sign in so AgentGuard can authorize elevated actions.',
     sellerActionMessage:
-      'Complete AadhaarChain verification before publishing or managing high-trust seller actions.',
+      'Identity is unverified. Sign in so AgentGuard can authorize elevated actions.',
   },
   verified: {
-    label: 'Verified',
-    buyerActionMessage: 'Trust is verified. Elevated buyer actions are available.',
+    buyerActionMessage: 'Trust is verified.',
     sellerActionMessage:
       'Trust is verified. Catalog publishing and other elevated seller actions remain available.',
   },
   manual_review: {
-    label: 'Manual review',
     buyerActionMessage:
-      'Elevated commerce actions stay paused until AadhaarChain review completes.',
+      'Elevated commerce actions stay paused while verification is under manual review.',
     sellerActionMessage:
       'Verification is under manual review. Elevated seller actions stay paused until review completes.',
   },
   revoked_or_blocked: {
-    label: 'Blocked',
     buyerActionMessage:
-      'Your trust state is blocked or revoked. Review AadhaarChain before elevated buyer actions.',
+      'Your trust state is blocked or revoked. Sign in again or review your identity before elevated buyer actions.',
     sellerActionMessage:
-      'Your trust state is blocked or revoked. Review AadhaarChain before attempting elevated seller actions.',
+      'Your trust state is blocked or revoked. Sign in again or review your identity before elevated seller actions.',
   },
 };
 
@@ -137,76 +125,76 @@ export function encodeBase58(bytes: Uint8Array): string {
     zeros += 1;
   }
 
-  const digits = [0];
-  for (let i = zeros; i < bytes.length; i += 1) {
-    let carry = bytes[i];
-    for (let j = 0; j < digits.length; j += 1) {
-      carry += digits[j] << 8;
-      digits[j] = carry % 58;
-      carry = (carry / 58) | 0;
+  const size = ((bytes.length - zeros) * 138) / 100 + 1;
+  const buffer = new Uint8Array(size);
+  let length = 0;
+
+  for (let index = zeros; index < bytes.length; index += 1) {
+    let carry = bytes[index];
+    let bufferIndex = 0;
+
+    for (let reverseIndex = size - 1; reverseIndex >= size - length; reverseIndex -= 1) {
+      carry += buffer[reverseIndex] * 256;
+      buffer[reverseIndex] = carry % 58;
+      carry = Math.floor(carry / 58);
     }
+
     while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
+      buffer[size - length - 1] = carry % 58;
+      carry = Math.floor(carry / 58);
+      length += 1;
     }
   }
 
-  let result = '';
-  for (let i = 0; i < zeros; i += 1) {
-    result += '1';
+  let encoded = '';
+  for (let index = 0; index < zeros; index += 1) {
+    encoded += BASE58_ALPHABET[0];
   }
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    result += BASE58_ALPHABET[digits[i]];
+
+  for (let index = size - length; index < size; index += 1) {
+    encoded += BASE58_ALPHABET[buffer[index]];
   }
-  return result;
+
+  return encoded;
+}
+
+interface TrustClientOptions {
+  trustApiUrl: string;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     credentials: 'include',
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
   });
+
   if (!response.ok) {
     throw new Error(`Trust API request failed: ${response.status}`);
   }
+
   return response.json() as Promise<T>;
 }
 
-export function createTrustClient({ trustApiUrl }: { trustApiUrl: string }) {
-  const base = trustApiUrl.replace(/\/+$/, '');
+export function createTrustClient({ trustApiUrl }: TrustClientOptions) {
+  const normalizedBase = trustApiUrl.replace(/\/$/, '');
 
   return {
     async fetchTrustSnapshot(walletAddress: string): Promise<TrustSnapshot> {
-      if (!walletAddress) {
-        return {
-          state: 'no_identity',
-          eligible: false,
-          reason:
-            'Authenticate with AadhaarChain before using trust-gated actions.',
-          trust: null,
-        };
-      }
-
       const identityResponse = await fetchJson<{ data: unknown | null }>(
-        `${base}/api/identity/${walletAddress}`,
+        `${normalizedBase}/api/identity/${walletAddress}`,
       );
 
       if (!identityResponse.data) {
         return {
           state: 'no_identity',
           eligible: false,
-          reason:
-            'Create an identity anchor in AadhaarChain before elevated portfolio actions.',
+          reason: TRUST_STATE_META.no_identity.buyerActionMessage,
           trust: null,
         };
       }
 
       const trustResponse = await fetchJson<{ data: TrustSurface }>(
-        `${base}/api/identity/${walletAddress}/trust`,
+        `${normalizedBase}/api/identity/${walletAddress}/trust`,
       );
       const trust = trustResponse.data;
 
@@ -224,12 +212,14 @@ export function createTrustClient({ trustApiUrl }: { trustApiUrl: string }) {
       purpose: string,
     ): Promise<IdentityProofToken> {
       const response = await fetchJson<{ data: IdentityProofToken }>(
-        `${base}/api/identity/${walletAddress}/proof-token`,
+        `${normalizedBase}/api/identity/${walletAddress}/proof-token`,
         {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ audience, purpose }),
         },
       );
+
       return response.data;
     },
 
@@ -241,9 +231,10 @@ export function createTrustClient({ trustApiUrl }: { trustApiUrl: string }) {
       signature: string;
     }): Promise<SignedIdentityProofResult> {
       const response = await fetchJson<{ data: SignedIdentityProofResult }>(
-        `${base}/api/identity/proof-token/verify`,
+        `${normalizedBase}/api/identity/proof-token/verify`,
         {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             token_id: input.tokenId,
             wallet_address: input.walletAddress,
@@ -253,6 +244,7 @@ export function createTrustClient({ trustApiUrl }: { trustApiUrl: string }) {
           }),
         },
       );
+
       return response.data;
     },
   };

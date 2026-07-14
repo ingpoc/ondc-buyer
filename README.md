@@ -1,28 +1,32 @@
 # ONDC UCP Buyer Portal
 
-`ondc-buyer` is the portfolio buyer application. It consumes AadhaarChain trust state for discovery, cart, checkout readiness, buyer agent workflows, and purpose-bound identity proof signing.
+`ondc-buyer` is the portfolio **ONDC Buyer** app under **AgentGuard**. Authorization is session principal (Google / demo) via the gateway; legacy wallet KYC hangar is optional.
 
-It does not verify identity documents and it must not receive raw Aadhaar, PAN, OCR, or verifier evidence.
+It does not verify identity documents and must not receive raw Aadhaar, PAN, OCR, or verifier evidence.
 
 ## Local Service
 
 | Service | URL |
 | --- | --- |
 | Buyer frontend | `http://127.0.0.1:43102` |
-| AadhaarChain gateway | `http://127.0.0.1:43101` |
+| Gateway + AgentGuard | `http://127.0.0.1:43101` |
 | Agent control plane (FlatWatch) | `http://127.0.0.1:43104` |
 
 ## Environment
 
 ```env
-VITE_AADHAAR_API_URL=http://127.0.0.1:43101
-VITE_BUYER_COMMERCE_URL=http://127.0.0.1:43102
-VITE_COMMERCE_DEMO_MODE=true
-VITE_AGENT_CONTROL_PLANE_URL=http://127.0.0.1:43104
-VITE_AGENT_RUNTIME_ENABLED=false
+VITE_IDENTITY_URL=http://127.0.0.1:43101
+# Leave unset — do NOT set to :43102 (self). Gateway has no /api/cart; local cart is the default.
+# VITE_BUYER_COMMERCE_URL=
+# VITE_API_BASE_URL=
+VITE_COMMERCE_DEMO_MODE=false
+VITE_IDENTITY_AUTH_ENABLED=true
+# Leave empty locally so /api/agent/* uses Vite proxy → gateway
+VITE_AGENT_CONTROL_PLANE_URL=
+VITE_AGENT_RUNTIME_ENABLED=true
 ```
 
-`VITE_COMMERCE_DEMO_MODE=true` is a local fallback for portfolio acceptance. It is not production commerce enforcement.
+`VITE_COMMERCE_DEMO_MODE=false` keeps “ONDC network” labels; cart stays local unless a real remote cart host is configured. Setting `VITE_BUYER_COMMERCE_URL` to the Buyer origin causes Cart 404.
 
 ## Development
 
@@ -43,34 +47,18 @@ npm run verify:staging-journey
 
 That verifier expects JSON commerce API responses for search, cart, and orders. A `200 text/html` response is not a valid commerce API pass.
 
-## Trust And Identity Flow
+## Auth And AgentGuard
 
-The buyer app reads AadhaarChain trust from:
+Booth path: **Continue with Google** or **Continue as demo user** → session cookie principal → AgentGuard evaluate/consume on checkout.
 
-- `GET /api/identity/{wallet_address}/trust`
-
-Verified trust enables high-trust buyer UI states such as checkout readiness. The app also exposes a wallet-signing control for `buyer_checkout_identity_proof`:
-
-1. request a short-lived AadhaarChain proof challenge
-2. ask the connected wallet to sign the challenge
-3. submit the signed proof back to AadhaarChain for verification
-4. display `Identity signed` only after the gateway verifies the wallet signature
-
-Chrome validation in the signed wallet profile has produced `Identity signed` for buyer proof with wallet `C5svcE...g92YFF`.
+Legacy wallet trust (`GET /api/identity/{wallet}/trust`) remains for hangar fixtures only. Session principals skip the legacy trust wall for elevated demo UI.
 
 ## Agent Page
 
 Route: `/agent`
 
-The buyer agent page uses the shared agent control plane. In signed Chrome it renders with:
-
-- wallet `C5svcE...g92YFF`
-- runtime `local_cli`
-- high-trust write access enabled
-- prior buyer agent messages and structured recommendations visible
+Uses the shared agent control plane. Prefer Samantha orb for user journeys (see `.cursor/skills/ondc-testing`).
 
 ## Production Boundary
 
 Frontend trust badges and disabled controls are guidance only. Protected checkout, refund, dispute, payment, recovery, and agent write actions require server-side commerce policy before production reliance.
-
-Open risk: server-side protected buyer action enforcement is still a P0/P1 portfolio item.

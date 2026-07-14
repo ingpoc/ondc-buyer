@@ -28,8 +28,9 @@ export default defineConfig({
     proxy: {
       '/api/entitlements': 'http://127.0.0.1:43104',
       '/api/agent': 'http://127.0.0.1:43104',
-      '/api': 'http://localhost:3001',
-      '/on_search': 'http://localhost:3001',
+      // Default /api → local gateway (AgentGuard, demo-commerce, auth). Not :3001.
+      '/api': 'http://127.0.0.1:43101',
+      '/on_search': 'http://127.0.0.1:43101',
     },
   },
 });

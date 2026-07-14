@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import type { UCPSession, UCPSessionItem, BecknItem } from '../types';
 import {
   addLocalItem,
@@ -7,7 +7,9 @@ import {
   removeLocalItem,
   updateLocalQuantity,
 } from '../lib/localCart';
-import { formatCartApiError, shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
+import { formatCartApiError, shouldFallbackLocalOnCartError, shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
+
+const USE_LOCAL_CART = shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE);
 
 const STORAGE_KEY = 'ondc-session-id';
 
@@ -68,15 +70,17 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (COMMERCE_DEMO_MODE) {
+      if (USE_LOCAL_CART) {
         setSession(getLocalSession(sessionId));
         return;
       }
       const data = await cartRequest(buildCommerceUrl(`/api/cart?sessionId=${sessionId}`));
       setSession(data.session);
     } catch (err) {
-      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
-        console.error('Failed to refresh cart, falling back to local session:', err);
+      if (
+        shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
+        shouldFallbackLocalOnCartError(err)
+      ) {
         setSession(getLocalSession(sessionId));
         setError(null);
       } else {
@@ -96,7 +100,7 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (COMMERCE_DEMO_MODE) {
+      if (USE_LOCAL_CART) {
         setSession(addLocalItem(sessionId, item, quantity));
         return;
       }
@@ -107,8 +111,10 @@ export function useCart(): UseCartResult {
       });
       setSession(data.session);
     } catch (err) {
-      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
-        console.error('Failed to add item to cart, falling back to local update:', err);
+      if (
+        shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
+        shouldFallbackLocalOnCartError(err)
+      ) {
         setSession(addLocalItem(sessionId, item, quantity));
         setError(null);
       } else {
@@ -124,7 +130,7 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (COMMERCE_DEMO_MODE) {
+      if (USE_LOCAL_CART) {
         setSession(removeLocalItem(sessionId, itemId));
         return;
       }
@@ -134,8 +140,10 @@ export function useCart(): UseCartResult {
       );
       setSession(data.session);
     } catch (err) {
-      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
-        console.error('Failed to remove item from cart, falling back to local update:', err);
+      if (
+        shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
+        shouldFallbackLocalOnCartError(err)
+      ) {
         setSession(removeLocalItem(sessionId, itemId));
         setError(null);
       } else {
@@ -151,7 +159,7 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (COMMERCE_DEMO_MODE) {
+      if (USE_LOCAL_CART) {
         setSession(updateLocalQuantity(sessionId, itemId, quantity));
         return;
       }
@@ -162,8 +170,10 @@ export function useCart(): UseCartResult {
       });
       setSession(data.session);
     } catch (err) {
-      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE)) {
-        console.error('Failed to update cart quantity, falling back to local update:', err);
+      if (
+        shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
+        shouldFallbackLocalOnCartError(err)
+      ) {
         setSession(updateLocalQuantity(sessionId, itemId, quantity));
         setError(null);
       } else {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FilterSidebar, type SearchFilters } from '../components/FilterSidebar';
 import { ResultGrid } from '../components/ResultGrid';
@@ -52,6 +52,7 @@ export function ResultsPage(): JSX.Element {
   const category = searchParams.get('category') ?? 'grocery';
   const rawQuery = searchParams.get('q') ?? '';
   const query = rawQuery === 'undefined' ? '' : rawQuery;
+  const ondcTxn = searchParams.get('ondc_txn') ?? '';
   const { addToCart } = useCart();
   const [filters, setFilters] = useState<SearchFilters>({});
 
@@ -69,11 +70,29 @@ export function ResultsPage(): JSX.Element {
   const { data, loading, error, execute } = useSearch(category, {
     query: query || undefined,
     preferences,
+    ondcTxn: ondcTxn || undefined,
   });
+  const autoRetryRef = useRef(0);
+  const [autoRetryNote, setAutoRetryNote] = useState<string | null>(null);
 
   useEffect(() => {
+    autoRetryRef.current = 0;
+    setAutoRetryNote(null);
     void execute();
   }, [execute]);
+
+  // Free GW cold start / Failed to fetch: auto-retry a few times before permanent error UI.
+  useEffect(() => {
+    if (!error || loading || data) return;
+    const transient = /Failed to fetch|waking|503|unavailable|dispatch failed/i.test(error);
+    if (!transient || autoRetryRef.current >= 3) return;
+    const attempt = ++autoRetryRef.current;
+    setAutoRetryNote(`Gateway may be waking — retry ${attempt}/3…`);
+    const t = window.setTimeout(() => {
+      void execute();
+    }, 2000 * attempt);
+    return () => window.clearTimeout(t);
+  }, [error, loading, data, execute]);
 
   function handleSearch(nextCategory: string, nextQuery: string): void {
     const normalized = String(nextQuery ?? '').trim();
@@ -94,12 +113,12 @@ export function ResultsPage(): JSX.Element {
 
   const items = (data as SearchResponse | null)?.items ?? [];
 
-  if (loading && !data) {
+  if ((loading && !data) || (error && autoRetryRef.current < 3 && !data)) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
         <Spinner className="size-6" />
         <div className="text-sm text-muted-foreground">
-          Pulling the latest offers for your selected category.
+          {autoRetryNote || 'Pulling the latest offers for your selected category.'}
         </div>
       </div>
     );
@@ -120,7 +139,15 @@ export function ResultsPage(): JSX.Element {
             <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/search')}>
               Back to search
             </Button>
-            <Button type="button" className="rounded-full" onClick={() => void execute()}>
+            <Button
+              type="button"
+              className="rounded-full"
+              onClick={() => {
+                autoRetryRef.current = 0;
+                setAutoRetryNote(null);
+                void execute();
+              }}
+            >
               Retry
             </Button>
           </div>
@@ -132,17 +159,13 @@ export function ResultsPage(): JSX.Element {
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-          Results
-        </div>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
             <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
               Browse {resultLabel}
             </h1>
-            <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Refine the search, compare offers, and move the best candidate into cart without
-              leaving the buyer shell.
+            <p className="max-w-[55ch] text-base leading-relaxed text-muted-foreground">
+              Refine search, compare offers, and move the best candidate into cart.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

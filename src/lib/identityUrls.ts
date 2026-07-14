@@ -1,21 +1,17 @@
-import { normalizeLoopbackUrl } from './loopback';
+import {
+  isLocalBrowserHost,
+  normalizeLoopbackUrl,
+  rejectLoopbackOnDeployedHost,
+} from './loopback';
 
 const LOCAL_IDENTITY_API_URL = 'http://127.0.0.1:43101';
 const LOCAL_IDENTITY_WEB_URL = 'http://127.0.0.1:43100';
-const DEPLOYED_IDENTITY_API_URL = 'https://identity-aadhar-gateway-main.onrender.com';
-const DEPLOYED_IDENTITY_WEB_URL = 'https://aadharcha.in';
+const DEPLOYED_IDENTITY_API_URL = 'https://gateway.aadharcha.in';
+const DEPLOYED_IDENTITY_WEB_URL = 'https://gateway.aadharcha.in';
 
 function resolveConfiguredUrl(configured: string | undefined, fallback: string) {
-  return normalizeLoopbackUrl(configured?.trim() || fallback).replace(/\/+$/, '');
-}
-
-function isLocalBrowserHost() {
-  if (typeof window === 'undefined') {
-    return import.meta.env.DEV;
-  }
-
-  const { hostname } = window.location;
-  return hostname === 'localhost' || hostname === '127.0.0.1';
+  const raw = rejectLoopbackOnDeployedHost(configured?.trim() || '', fallback);
+  return normalizeLoopbackUrl(raw || fallback).replace(/\/+$/, '');
 }
 
 function configuredAadhaarApiUrl() {

@@ -4,7 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 export interface CartItemProps {
   item: {
-    item: { id: string; descriptor?: { name: string }; price?: { value?: string; currency: string } };
+    item: {
+      id: string;
+      name?: string;
+      descriptor?: { name: string };
+      price?: { value?: string; currency: string };
+    };
     quantity: number;
   };
   onUpdateQuantity: (itemId: string, quantity: number) => Promise<void>;
@@ -30,7 +35,7 @@ export function CartItem({
       <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="text-lg font-semibold tracking-tight">
-            {item.item.descriptor?.name || item.item.id}
+            {item.item.descriptor?.name || item.item.name || item.item.id}
           </div>
           <div className="text-sm text-muted-foreground">
             {item.item.price?.currency} {item.item.price?.value || '0'} × {item.quantity}

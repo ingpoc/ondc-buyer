@@ -79,9 +79,23 @@ export async function fetchBuyerOrder(orderId: string): Promise<UCPOrder | null>
     credentials: 'include',
   });
 
-  if (!response.ok) {
-    throw await parseErrorResponse(response, `Load order failed: ${response.status}`);
+  const raw = await response.text();
+  if (raw.trimStart().startsWith('<')) {
+    throw new Error('Order API returned HTML (no commerce order host on this deploy)');
   }
 
-  return normalizeOrderResponse(await response.json());
+  let payload: unknown = null;
+  try {
+    payload = raw ? JSON.parse(raw) : null;
+  } catch {
+    throw new Error('Order API returned non-JSON');
+  }
+
+  if (!response.ok) {
+    const error =
+      payload && typeof payload === 'object' ? (payload as { error?: unknown }).error : null;
+    throw new Error(typeof error === 'string' ? error : `Load order failed: ${response.status}`);
+  }
+
+  return normalizeOrderResponse(payload);
 }

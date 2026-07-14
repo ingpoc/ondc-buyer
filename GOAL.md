@@ -1,105 +1,70 @@
 # ONDC Buyer Goal
 
-## Product
+## Status
 
-ONDC Buyer is a trusted, AI-assisted buying application that helps people find,
-compare, purchase, and resolve issues across an open commerce network without
-surrendering unnecessary identity data or uncontrolled authority to an agent.
+**Active Token Nxt demonstration application.** It must complete the buyer half
+of one Buyer-to-Seller commerce journey under the shared AgentGuard contract.
+Milestones 10–12 add mandate editing, tool-runner execution, and Realtime voice.
 
-## Product promise
+## Product outcome
 
-> Buy with confidence. Let AI help. Stay in control of every consequential
-> action.
+A person can delegate product discovery and purchase to an AI shopping agent
+that **operates the Buyer app** (search, navigate, cart, checkout) while
+AgentGuard retains final control over spending, order changes, and remedies.
 
-## Primary customer
+## Required journey
 
-A buyer who wants the reach of open-network commerce with understandable
-recommendations, safe checkout, reliable order visibility, and accountable AI
-assistance.
+1. Edit and confirm a Buyer Shopping Agent mandate (allowed actions + checkout
+   auto-approve limit).
+2. Talk to the agent in text (Cursor) or voice (Realtime `gpt-realtime-2.1`);
+   the agent uses tools to search, navigate, and add items to the cart.
+3. Discover an item published by the Seller demo and inspect price/availability.
+4. Compare and add the item to a cart without unnecessary approval prompts.
+5. Let the agent drive checkout via guarded tools with merchant, items, total,
+   and expected fulfilment visible.
+6. Allow an in-policy checkout and issue an Intent Receipt.
+7. Escalate an out-of-policy checkout for one exact human approval; consume it
+   once and reject replay.
+8. Complete simulated payment, create an order, and expose it to Seller.
+9. Track the order and raise a cancellation, return, or issue request.
+10. Pause the agent and reject its next protected action.
 
-## Customer jobs
+## Protected actions
 
-1. Discover relevant products across participating sellers.
-2. Understand price, seller, delivery, return, and trust differences.
-3. Use AI to compare options without hidden purchases or manipulated ranking.
-4. Approve the exact cart, amount, seller, address, and payment consequence.
-5. Track fulfillment and obtain help with cancellation, return, refund, or
-   dispute.
-6. Share identity or eligibility claims only when the action genuinely needs
-   them.
-7. Inspect and revoke any authority delegated to a buyer agent.
+Checkout, cancellation after commitment, return submission, and acceptance of a
+financial remedy require current AgentGuard authority. Search, comparison,
+recommendations, cart preparation, navigation, and issue drafting do not.
 
-## Owned capabilities
+Authorization is enforced server-side and binds principal, agent, action,
+merchant/resource, amount, policy version, nonce, and expiry. Raw identity,
+address, cart, order, and payment evidence remains with the Buyer application;
+receipts contain hashes and minimum necessary metadata.
 
-- product discovery, comparison, cart, checkout, order, refund, and dispute UX;
-- explainable recommendations with source and uncertainty visibility;
-- buyer-agent planning and bounded action delegation;
-- server-side enforcement for protected buyer actions;
-- payment and order reconciliation;
-- accessible multilingual explanations and approvals;
-- consumer support, correction, and dispute flows.
+## Acceptance criteria
 
-## Relationship to AadhaarChain
-
-ONDC Buyer is a relying application, not an identity verifier.
-
-- AadhaarChain establishes minimal assurance and agent authorization.
-- Buyer requests only the claims required for a specific action.
-- Buyer verifies one-time, action-bound proofs and current revocation.
-- Raw Aadhaar, PAN, OCR, biometrics, and verification evidence never enter this
-  product.
-- Ordinary discovery and low-risk purchases must not be unnecessarily KYC
-  gated.
-
-## Hard rules
-
-- Recommendations must distinguish facts, estimates, sponsored placement, and
-  model judgment.
-- AI cannot purchase, change payment details, or disclose protected data outside
-  an explicit delegation policy.
-- Checkout approval binds the exact cart, seller, amount, address, payment
-  method, policy, nonce, and expiry.
-- Protected actions are enforced by the server, not only disabled in the UI.
-- A failed, stale, or revoked trust check blocks only the action requiring it and
-  explains how to recover.
-- Users can pause the buyer agent and review its complete action history.
-- Commerce state remains in the commerce system; it is not copied on-chain
-  merely for audit theatre.
-
-## Phase-one outcome
-
-Deliver one complete buyer journey using a real or contract-faithful commerce
-backend:
-
-1. Search and compare products.
-2. Add a selected product to a persistent cart.
-3. Explain why checkout does or does not require step-up assurance.
-4. Present an exact, plain-language checkout approval.
-5. Verify and consume a one-time proof server-side.
-6. Create and display the order.
-7. Track fulfillment and exercise a refund or dispute flow.
-8. Show the buyer-agent activity and revocation controls.
-
-## Success measures
-
-- Users correctly identify total amount, seller, delivery, and return terms.
-- No protected action succeeds from UI-only trust state.
-- No successful proof replay or post-revocation action.
-- Recommendation explanations are traceable to catalog and policy inputs.
-- Checkout and recovery completion outperform the wallet-first baseline.
-- Refund and dispute status remains reconciled with the source system.
+- The Buyer discovers the exact item published in Seller without manual data
+  repair.
+- An in-limit checkout succeeds; an over-limit checkout requires approval.
+- Replay and post-pause protected actions fail.
+- The resulting order appears in Seller with the same transaction identity.
+- The buyer can inspect and edit authority and receipts in plain language.
+- Agent tools execute under the confirmed mandate (not chat-only proposals).
+- Demo commerce and payment are clearly labelled simulated.
+- No UI-only control is treated as authorization.
 
 ## Non-goals
 
-- Becoming an identity custodian.
-- Requiring Aadhaar verification for ordinary browsing or every purchase.
-- Hiding sponsored ranking or AI uncertainty.
-- Autonomous purchasing without explicit bounded delegation.
-- Treating demo commerce as production ONDC protocol compliance.
-- Putting carts, addresses, orders, or customer PII on Solana.
+- Autonomous purchasing without a confirmed mandate.
+- Storing or exposing PINs, OTPs, full payment credentials, or raw identity data
+  to the model.
+- Production ONDC, logistics, payment, or NPCI claims before integration and
+  conformance are complete.
+- Buyer-specific authorization semantics that diverge from Seller.
+- Magically wrapping arbitrary third-party browser agents.
 
 ## Source of truth
 
-This file owns the ONDC Buyer product goal. `README.md` owns development and
-runtime instructions. Workspace integration status remains in the root
-`AGENTS.md` and `PRODUCTION-READINESS.md`.
+This file owns the Buyer outcome. `../PRODUCTIDEA.md` owns product scope,
+`../ARCHITECTURE.md` owns shared contracts and protocol requirements,
+`../IMPLEMENTATIONPLAN.md` owns build milestones, `../TESTINGPLAN.md` owns
+verification gates, and `../README.md` / `../AGENTS.md` own runtime routing.

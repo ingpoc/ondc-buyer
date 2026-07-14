@@ -59,4 +59,27 @@ describe('commerce config', () => {
       demoMode: false,
     });
   });
+
+  it('does not keep a loopback buyer commerce URL when the browser host is deployed', () => {
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, hostname: 'ondcbuyer.aadharcha.in' },
+    });
+    try {
+      expect(resolveCommerceConfig({
+        DEV: false,
+        VITE_BUYER_COMMERCE_URL: 'http://127.0.0.1:43102',
+        VITE_COMMERCE_DEMO_MODE: 'false',
+      })).toEqual({
+        apiBase: '',
+        demoMode: false,
+      });
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: original,
+      });
+    }
+  });
 });

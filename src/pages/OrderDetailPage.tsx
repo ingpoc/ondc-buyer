@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, MapPin, Truck } from 'lucide-react';
 import { TrustNotice } from '../components/TrustStatus';
 import { useTrustState, useSubject } from '../hooks';
-import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
+import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
 import { cancelVerifiedDemoOrder, getDemoOrder } from '../lib/localOrders';
 import { fetchBuyerOrder } from '../lib/orderApi';
 import {
@@ -25,11 +27,21 @@ import { Spinner } from '../components/ui/spinner';
 const CANCELLABLE_STATUSES: UCPOrderStatus[] = ['created', 'accepted', 'in_progress'];
 const isCancellable = (status: UCPOrderStatus): boolean => CANCELLABLE_STATUSES.includes(status);
 
-const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
-  if (COMMERCE_DEMO_MODE) {
-    return getDemoOrder(orderId);
+/** FQDN has no /api/orders on Vercel — AG checkout writes localStorage; use that like OrdersPage. */
+const fetchOrder = async (
+  orderId: string,
+  subjectId: string | null,
+): Promise<UCPOrder | null> => {
+  if (!subjectId) return null;
+  if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
+    return getDemoOrder(orderId, subjectId);
   }
-  return fetchBuyerOrder(orderId);
+  try {
+    return await fetchBuyerOrder(orderId);
+  } catch {
+    // Samantha AG checkout may still persist locally when remote order API is absent.
+    return getDemoOrder(orderId, subjectId);
+  }
 };
 
 function getOrderStatusLabel(status: UCPOrderStatus): string {
@@ -79,7 +91,7 @@ function formatPrice(currency: string, value: string | undefined, quantity = 1) 
 export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { walletAddress } = useSubject();
+  const { walletAddress, principalId, subjectId } = useSubject();
   const trust = useTrustState(walletAddress);
   const [order, setOrder] = useState<UCPOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,7 +110,7 @@ export function OrderDetailPage(): JSX.Element {
       }
 
       try {
-        const data = await fetchOrder(id);
+        const data = await fetchOrder(id, subjectId);
         if (!data) {
           setError('Order not found');
         } else {
@@ -113,11 +125,11 @@ export function OrderDetailPage(): JSX.Element {
     };
 
     void loadOrder();
-  }, [id]);
+  }, [id, subjectId]);
 
   async function handleCancel() {
     if (!order || !id) return;
-    if (trust.state !== 'verified') {
+    if (!elevatedTrustSatisfied(trust.state, principalId)) {
       setError(trust.reason || 'Verified buyer trust is required before cancelling orders.');
       return;
     }
@@ -129,7 +141,11 @@ export function OrderDetailPage(): JSX.Element {
     setCancelling(true);
     try {
       if (COMMERCE_DEMO_MODE) {
-        const updatedOrder = cancelVerifiedDemoOrder(id, trust.state);
+        const updatedOrder = cancelVerifiedDemoOrder(
+          id,
+          effectiveElevatedTrustState(trust.state, principalId),
+          subjectId ?? '',
+        );
         if (!updatedOrder) {
           throw new Error('Order not found');
         }
@@ -140,7 +156,8 @@ export function OrderDetailPage(): JSX.Element {
       const trustPolicy = buildProtectedBuyerActionPolicy({
         action: 'refund_request',
         walletAddress,
-        trustState: trust.state,
+        trustState: effectiveElevatedTrustState(trust.state, principalId),
+        subjectId,
         auditSubjectId: id,
         auditReferenceId: order.id,
       });
@@ -175,7 +192,7 @@ export function OrderDetailPage(): JSX.Element {
     if (!order || !issueDescription.trim()) {
       return;
     }
-    if (trust.state !== 'verified') {
+    if (!elevatedTrustSatisfied(trust.state, principalId)) {
       setError(trust.reason || 'Verified buyer trust is required before creating support cases.');
       return;
     }
@@ -205,7 +222,8 @@ export function OrderDetailPage(): JSX.Element {
     const trustPolicy = buildProtectedBuyerActionPolicy({
       action: 'dispute_creation',
       walletAddress,
-      trustState: trust.state,
+      trustState: effectiveElevatedTrustState(trust.state, principalId),
+      subjectId,
       auditSubjectId: order.id,
       auditReferenceId: supportCase.case_id,
     });
@@ -265,7 +283,8 @@ export function OrderDetailPage(): JSX.Element {
   }
 
   const canCancel = isCancellable(order.status);
-  const protectedActionsBlocked = !trust.loading && trust.state !== 'verified';
+  const protectedActionsBlocked =
+    !trust.loading && !elevatedTrustSatisfied(trust.state, principalId);
 
   return (
     <div className="space-y-8">
@@ -293,6 +312,20 @@ export function OrderDetailPage(): JSX.Element {
           <Badge variant="secondary" className={`rounded-full ${statusClass(order.status)}`}>
             {getOrderStatusLabel(order.status)}
           </Badge>
+          {order.payment?.status === 'PAID' || order.payment?.status === 'completed' ? (
+            <Badge
+              variant="secondary"
+              className="rounded-full bg-emerald-100 text-emerald-900"
+              data-testid="order-payment-paid"
+            >
+              Paid
+            </Badge>
+          ) : null}
+          {order.payment?.transactionId ? (
+            <Badge variant="outline" className="rounded-full font-mono" data-testid="order-receipt-id">
+              Receipt {order.payment.transactionId}
+            </Badge>
+          ) : null}
           {canCancel ? (
             <Button
               type="button"
@@ -308,11 +341,11 @@ export function OrderDetailPage(): JSX.Element {
       </section>
 
       <TrustNotice
-        state={trust.state}
+        state={effectiveElevatedTrustState(trust.state, principalId)}
         loading={trust.loading}
         error={trust.error}
-        reason={trust.reason}
-        actionLabel="Resolve trust in AadhaarChain"
+        reason={principalId ? undefined : trust.reason}
+
       />
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -467,6 +500,38 @@ export function OrderDetailPage(): JSX.Element {
         </div>
 
         <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+          <Card className="border-border/70 bg-card/90" data-testid="order-payment-card">
+            <CardHeader>
+              <CardTitle className="text-xl">Payment</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Status</span>
+                <span className="font-medium" data-testid="order-payment-status">
+                  {order.payment?.status === 'PAID' || order.payment?.status === 'completed'
+                    ? 'PAID'
+                    : order.payment?.status || 'NOT-PAID'}
+                </span>
+              </div>
+              {order.payment?.amount ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Amount</span>
+                  <span>
+                    {order.payment.amount.currency} {order.payment.amount.value}
+                  </span>
+                </div>
+              ) : null}
+              {order.payment?.transactionId ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Receipt</span>
+                  <span className="font-mono" data-testid="order-payment-receipt">
+                    {order.payment.transactionId}
+                  </span>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
           <Card className="border-border/70 bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">

@@ -66,11 +66,11 @@ describe('fetchTrustSnapshot', () => {
       eligible: false,
       trust: null,
     });
-    expect(snapshot.reason).toContain('Create an identity anchor');
+    expect(snapshot.reason).toContain('Sign in');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each(TRUST_STATES)('maps AadhaarChain fixture state %s', async (state) => {
+  it.each(TRUST_STATES)('maps trust fixture state %s', async (state) => {
     const trust = trustSurface(state);
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse({ data: { owner: WALLET_ADDRESS } }))

@@ -1,17 +1,18 @@
 import { FormEvent, Fragment, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bot, ChevronRight, Menu, Search, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { Bot, Menu, Search, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { useAgentRuntime, useSubject, useTrustState } from './hooks';
 import { SearchPage } from './pages/SearchPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { AgentChatPage } from './pages/AgentChatPage';
+import { BuyerConfigPage } from './pages/BuyerConfigPage';
 import { CartPage } from './pages/CartPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
-import { Button, buttonVariants } from './components/ui/button';
+import { SamanthaOrb } from './components/SamanthaOrb';
+import { Button } from './components/ui/button';
 import {
   ButtonGroup,
   ButtonGroupText,
@@ -31,10 +32,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from './components/ui/sheet';
-import { normalizeLoopbackUrl } from './lib/loopback';
 import type { PortfolioTrustState } from './lib/trust';
 import { cn } from './lib/utils';
 import { useAuthContext } from './contexts/AuthContext';
+import { useAuthProviders } from './lib/authProviders';
+import { COMMERCE_EXCHANGE_LABEL } from './lib/commerceConfig';
 
 const IDENTITY_AUTH_ENABLED = import.meta.env.VITE_IDENTITY_AUTH_ENABLED === 'true';
 
@@ -45,30 +47,17 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { href: '/agent', label: 'Ask Samantha' },
   { href: '/search', label: 'Search' },
   { href: '/cart', label: 'Cart' },
   { href: '/orders', label: 'Orders' },
+  { href: '/config', label: 'Config' },
 ];
 
 const SECONDARY_NAV_ITEMS: NavItem[] = [
-  { href: '/agent', label: 'Agent' },
   { href: '/usecase.html#agents', label: 'How it works', external: true },
 ];
 
-const IDENTITY_WEB_URL = normalizeLoopbackUrl(
-  import.meta.env.VITE_IDENTITY_WEB_URL || 'http://127.0.0.1:43100',
-);
-
-const WALLET_BUTTON_STYLE = {
-  backgroundColor: 'var(--primary)',
-  color: 'var(--primary-foreground)',
-  borderRadius: '999px',
-  boxShadow: 'var(--wallet-shadow)',
-  height: '40px',
-  padding: '0 16px',
-  fontSize: '0.875rem',
-  fontWeight: 600,
-};
 
 type HeaderControl = 'search' | 'runtime' | 'trust' | null;
 
@@ -76,7 +65,7 @@ function getTrustMeta(state: PortfolioTrustState, loading?: boolean) {
   if (loading) {
     return {
       label: 'Trust loading',
-      detail: 'Checking AadhaarChain before enabling elevated buyer actions.',
+      detail: 'Checking session trust before enabling elevated buyer actions.',
       className: 'bg-secondary text-secondary-foreground',
       icon: ShieldAlert,
     };
@@ -86,35 +75,35 @@ function getTrustMeta(state: PortfolioTrustState, loading?: boolean) {
     case 'verified':
       return {
         label: 'Trust verified',
-        detail: 'AadhaarChain verification is complete for elevated buyer actions.',
+        detail: 'Session trust is ready for elevated buyer actions.',
         className: 'bg-primary/12 text-primary',
         icon: ShieldCheck,
       };
     case 'revoked_or_blocked':
       return {
         label: 'Trust blocked',
-        detail: 'AadhaarChain is blocking elevated buyer actions until the issue is resolved.',
+        detail: 'Elevated buyer actions are blocked until the trust issue is resolved.',
         className: 'bg-destructive/10 text-destructive',
         icon: ShieldX,
       };
     case 'identity_present_unverified':
       return {
         label: 'Trust unverified',
-        detail: 'Identity exists, but AadhaarChain verification is not complete yet.',
+        detail: 'Identity exists, but verification is not complete yet.',
         className: 'bg-secondary text-secondary-foreground',
         icon: ShieldAlert,
       };
     case 'manual_review':
       return {
         label: 'Trust review',
-        detail: 'AadhaarChain has the identity under manual review.',
+        detail: 'Identity is under manual review.',
         className: 'bg-secondary text-secondary-foreground',
         icon: ShieldAlert,
       };
     default:
       return {
-        label: 'No identity',
-        detail: 'Connect a wallet-backed identity before attempting elevated buyer actions.',
+        label: 'Unsigned',
+        detail: 'Sign in before elevated buyer actions.',
         className: 'bg-secondary text-secondary-foreground',
         icon: ShieldAlert,
       };
@@ -135,6 +124,9 @@ function getActivePath(pathname: string): string {
   }
   if (pathname.startsWith('/orders')) {
     return '/orders';
+  }
+  if (pathname.startsWith('/config')) {
+    return '/config';
   }
   if (pathname.startsWith('/agent')) {
     return '/agent';
@@ -157,25 +149,14 @@ function NavigationLink({
 }) {
   if (external) {
     return (
-      <a
-        href={href}
-        onClick={onNavigate}
-        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'rounded-full')}
-      >
+      <a href={href} onClick={onNavigate} className="nav-pill" data-active="false">
         {label}
       </a>
     );
   }
 
   return (
-    <Link
-      to={href}
-      onClick={onNavigate}
-      className={cn(
-        buttonVariants({ variant: active ? 'secondary' : 'ghost', size: 'sm' }),
-        'rounded-full',
-      )}
-    >
+    <Link to={href} onClick={onNavigate} className="nav-pill" data-active={active ? 'true' : 'false'}>
       {label}
     </Link>
   );
@@ -327,15 +308,12 @@ export function HeaderStatusRail({
         trustExpanded ? (
           <ButtonGroup className="rounded-full border border-border/70 bg-background/90 px-1 shadow-sm backdrop-blur">
             <ButtonGroupText
-              asChild
               className={cn('rounded-full border-0 px-3 text-xs', trustMeta.className)}
+              title={trustMeta.detail}
             >
-              <a href={`${IDENTITY_WEB_URL}/home`} title={trustMeta.detail}>
-                <TrustIcon className="size-3.5" />
-                <span>Trust</span>
-                <span className="font-medium">{trustMeta.label.replace(/^Trust /, '')}</span>
-                <ChevronRight className="size-3.5 opacity-70" />
-              </a>
+              <TrustIcon className="size-3.5" />
+              <span>Trust</span>
+              <span className="font-medium">{trustMeta.label.replace(/^Trust /, '')}</span>
             </ButtonGroupText>
           </ButtonGroup>
         ) : (
@@ -360,7 +338,15 @@ export function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const { walletAddress, subjectId } = useSubject();
-  const { isAuthenticated, loading: authLoading, login, logout } = useAuthContext();
+  const {
+    isAuthenticated,
+    loading: authLoading,
+    loginAuth0,
+    loginDemo,
+    loginGoogle,
+    logout,
+  } = useAuthContext();
+  const authProviders = useAuthProviders();
   const trust = useTrustState(walletAddress);
   const runtime = useAgentRuntime(subjectId, walletAddress);
   const activePath = getActivePath(location.pathname);
@@ -393,9 +379,9 @@ export function App() {
 
   return (
     <Fragment>
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+      <header className="shell-header">
+        <div className="shell-inner">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="lg:hidden">
               <Sheet>
                 <SheetTrigger asChild>
@@ -408,12 +394,12 @@ export function App() {
                   <SheetHeader>
                     <SheetTitle>ONDC Buyer</SheetTitle>
                     <SheetDescription>
-                      Trust-aware buyer shell for discovery, cart, and checkout flows.
+                      Agent-led shopping under AgentGuard ({COMMERCE_EXCHANGE_LABEL}).
                     </SheetDescription>
                   </SheetHeader>
-                  <div className="space-y-4 px-6 pb-6">
+                  <div className="flex flex-col gap-4 px-6 pb-6">
                     <HeaderSearch onSearch={handleSearch} expanded />
-                    <div className="grid gap-2">
+                    <div className="flex flex-col gap-2">
                       {NAV_ITEMS.map((item) => (
                         <NavigationLink
                           key={item.href}
@@ -424,7 +410,7 @@ export function App() {
                         />
                       ))}
                     </div>
-                    <div className="grid gap-2 border-t border-border/60 pt-4">
+                    <div className="flex flex-col gap-2 border-t border-border/60 pt-4">
                       {SECONDARY_NAV_ITEMS.map((item) => (
                         <NavigationLink
                           key={item.href}
@@ -446,13 +432,44 @@ export function App() {
                           Sign out
                         </Button>
                       ) : (
-                        <Button
-                          type="button"
-                          className="w-full rounded-full"
-                          onClick={() => login(location.pathname)}
-                        >
-                          Login with AadhaarChain
-                        </Button>
+                        <div className="grid gap-2">
+                          {authProviders.auth0 ? (
+                            <Button
+                              type="button"
+                              className="w-full rounded-full"
+                              onClick={() => loginAuth0(location.pathname)}
+                            >
+                              Sign in
+                            </Button>
+                          ) : null}
+                          {!authProviders.auth0 && authProviders.google ? (
+                            <Button
+                              type="button"
+                              className="w-full rounded-full"
+                              onClick={() => loginGoogle(location.pathname)}
+                            >
+                              Continue with Google
+                            </Button>
+                          ) : null}
+                          {authProviders.demo_continue ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full rounded-full"
+                              onClick={() => loginDemo(location.pathname)}
+                            >
+                              Continue as booth user
+                            </Button>
+                          ) : null}
+                          {!authProviders.loading &&
+                          !authProviders.auth0 &&
+                          !authProviders.google &&
+                          !authProviders.demo_continue ? (
+                            <p className="text-sm text-muted-foreground">
+                              Sign-in is not configured on the gateway.
+                            </p>
+                          ) : null}
+                        </div>
                       )
                     ) : null}
                   </div>
@@ -460,25 +477,17 @@ export function App() {
               </Sheet>
             </div>
 
-            <Link to="/search" className="space-y-0.5">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Portfolio
+            <Link to="/search" className="min-w-0">
+              <div className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                ONDC Buyer
               </div>
-              <div className="text-xl font-semibold tracking-tight">ONDC Buyer</div>
-              <div className="hidden text-sm text-muted-foreground sm:block">
-                Discover verified commerce with a faster trust-aware shell.
+              <div className="hidden text-xs text-muted-foreground sm:block">
+                Shop with Samantha under AgentGuard
               </div>
             </Link>
           </div>
 
-          <nav
-            className={cn(
-              'hidden items-center gap-1 lg:flex',
-              activeHeaderControl
-                ? 'xl:flex-1 xl:min-w-0 xl:pl-4'
-                : 'lg:flex-1 lg:justify-center xl:pr-4',
-            )}
-          >
+          <nav className="hidden flex-1 items-center justify-center gap-1.5 lg:flex">
             {NAV_ITEMS.map((item) => (
               <NavigationLink
                 key={item.href}
@@ -529,35 +538,60 @@ export function App() {
                   Sign out
                 </Button>
               ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="rounded-full"
-                  onClick={() => login(location.pathname)}
-                >
-                  Login with AadhaarChain
-                </Button>
+                <div className="flex items-center gap-2">
+                  {authProviders.auth0 ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => loginAuth0(location.pathname)}
+                    >
+                      Sign in
+                    </Button>
+                  ) : null}
+                  {!authProviders.auth0 && authProviders.google ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => loginGoogle(location.pathname)}
+                    >
+                      Google
+                    </Button>
+                  ) : null}
+                  {authProviders.demo_continue ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => loginDemo(location.pathname)}
+                    >
+                      Booth
+                    </Button>
+                  ) : null}
+                </div>
               )
             ) : null}
-            <WalletMultiButton style={WALLET_BUTTON_STYLE} />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1200px] px-4 py-8 sm:px-6">
         <Routes>
           <Route path="/" element={<Navigate to="/search" replace />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/results" element={<ResultsPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
           <Route path="/agent" element={<AgentChatPage />} />
+          <Route path="/config" element={<BuyerConfigPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
           <Route path="*" element={<Navigate to="/search" replace />} />
         </Routes>
-        <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-4 border-t border-border/60 px-4 py-6 text-sm text-muted-foreground sm:px-6 lg:px-8">
+        <footer className="mt-10 flex flex-wrap items-center gap-3 border-t border-border/60 py-6 text-sm text-muted-foreground">
           {SECONDARY_NAV_ITEMS.map((item) => (
             <NavigationLink
               key={item.href}
@@ -569,6 +603,7 @@ export function App() {
           ))}
         </footer>
       </main>
+      <SamanthaOrb />
     </Fragment>
   );
 }

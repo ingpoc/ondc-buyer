@@ -1,3 +1,32 @@
+export function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+export function isLoopbackUrl(url: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isLocalBrowserHost(): boolean {
+  if (typeof window === 'undefined') {
+    return Boolean(import.meta.env.DEV);
+  }
+  return isLoopbackHostname(window.location.hostname);
+}
+
+/** Never call loopback APIs from a deployed FQDN host (guards against baked .env.local). */
+export function rejectLoopbackOnDeployedHost(url: string, fallback: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return fallback;
+  if (!isLocalBrowserHost() && isLoopbackUrl(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
+}
+
 export function normalizeLoopbackUrl(url: string): string {
   if (!import.meta.env.DEV) {
     return url;

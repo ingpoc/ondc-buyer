@@ -5,8 +5,29 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/ondc-site-verification.html",
+      "destination": "https://gateway.aadharcha.in/ondc/np/buyer/ondc-site-verification.html"
+    },
+    {
+      "source": "/ondc/on_subscribe",
+      "destination": "https://gateway.aadharcha.in/ondc/np/buyer/on_subscribe"
+    },
+    {
+      "source": "/ondc/:path*",
+      "destination": "https://gateway.aadharcha.in/ondc/np/buyer/:path*"
+    },
+    {
+      "source": "/api/agent/:path*",
+      "destination": "https://gateway.aadharcha.in/api/agent/:path*"
+    },
+    {
+      "source": "/api/agent",
+      "destination": "https://gateway.aadharcha.in/api/agent"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "installCommand": "npm install"
 }

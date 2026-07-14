@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PackageSearch } from 'lucide-react';
-import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { useSubject } from '../hooks';
+import { COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
 import { listDemoOrders } from '../lib/localOrders';
 import { fetchBuyerOrders } from '../lib/orderApi';
 import type { UCPOrder, UCPOrderStatus } from '../types';
@@ -55,14 +57,26 @@ function statusBadgeClass(status: UCPOrderStatus) {
 
 export function OrdersPage() {
   const navigate = useNavigate();
+  const { subjectId, authLoading } = useSubject();
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const [orders, setOrders] = useState<UCPOrder[]>(() => (COMMERCE_DEMO_MODE ? listDemoOrders() : []));
-  const [loading, setLoading] = useState(!COMMERCE_DEMO_MODE);
+  const useLocalOrders = shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE);
+  const [orders, setOrders] = useState<UCPOrder[]>([]);
+  const [loading, setLoading] = useState(authLoading || !useLocalOrders);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (COMMERCE_DEMO_MODE) {
-      setOrders(listDemoOrders());
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+    if (!subjectId) {
+      setOrders([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    if (useLocalOrders) {
+      setOrders(listDemoOrders(subjectId));
       setLoading(false);
       setError(null);
       return;
@@ -86,10 +100,10 @@ export function OrdersPage() {
           setOrders(nextOrders);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (!cancelled) {
-          setOrders([]);
-          setError(err instanceof Error ? err.message : 'Failed to load orders.');
+          setOrders(listDemoOrders(subjectId));
+          setError(null);
         }
       })
       .finally(() => {
@@ -101,7 +115,7 @@ export function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authLoading, subjectId, useLocalOrders]);
 
   const filteredOrders = orders.filter((order) => {
     if (filter === 'all') return true;

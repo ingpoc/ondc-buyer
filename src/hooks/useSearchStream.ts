@@ -4,9 +4,32 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { searchCommerceItems } from '../lib/commerceClient';
 import { resolveMockBuyerEndpoint } from '../lib/mockSearch';
+import {
+  isOndcNetworkSearchReady,
+  ondcSearchAndCollect,
+  OUR_BPP_ID,
+  type OndcCatalogItem,
+} from '../lib/ondc/protocolClient';
 import type { BecknItem } from '../types';
+
+function mapOndcCatalogToBeckn(items: OndcCatalogItem[]): BecknItem[] {
+  return items.map((item) => {
+    const name = String(item.name || item.id || 'ONDC item');
+    const priceValue = String(item.price_inr ?? '0');
+    return {
+      id: String(item.id || `${item.bpp_id || 'bpp'}-${name}`),
+      name,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      price: { currency: 'INR', value: priceValue },
+      images: [],
+      descriptor: { name, short_desc: String(item.provider_name || item.bpp_id || '') },
+      category_id: 'grocery',
+    };
+  });
+}
 
 /** Stream event types */
 export type StreamEventType =
@@ -65,11 +88,9 @@ export interface SearchStreamParams {
   preferences?: string;
 }
 
-const STREAM_TIMEOUT = 3000;
-
 /**
- * Hook for SSE-based progressive disclosure search
- * Streams results as they arrive with immediate status feedback
+ * Search results hook — demo mock when VITE_COMMERCE_DEMO_MODE=true;
+ * otherwise ONDC network (or published demo-commerce), never mock bananas.
  */
 export function useSearchStream(): SearchStreamResult {
   const stateRef = useRef<SearchStreamState>({
@@ -144,69 +165,43 @@ export function useSearchStream(): SearchStreamResult {
       return;
     }
 
-    const url = buildCommerceUrl(`/api/search/stream?${queryParams.toString()}`);
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
-
-    timeoutRef.current = setTimeout(() => {
-      if (stateRef.current.isStreaming) {
-        stopStream();
-      }
-    }, STREAM_TIMEOUT);
-
-    eventSource.onmessage = (event) => {
+    // No-demo path: ONDC network catalogs first; published demo-commerce only as empty-network fallback.
+    // Never invent mock grocery (bananas) when VITE_COMMERCE_DEMO_MODE=false.
+    void (async () => {
       try {
-        const streamEvent = JSON.parse(event.data) as StreamEvent;
-
-        switch (streamEvent.type) {
-          case 'status':
-            setState({ status: 'streaming', error: null });
-            break;
-
-          case 'results': {
-            const resultsData = streamEvent.data as ResultsEventData;
-            setState({
-              items: resultsData.items,
-              hasMore: resultsData.hasMore,
-              status: 'streaming',
-            });
-            break;
-          }
-
-          case 'error': {
-            const errorData = streamEvent.data as ErrorEventData;
-            setState({
-              status: 'error',
-              error: errorData.error,
-              isStreaming: false,
-            });
-            stopStream();
-            break;
-          }
-
-          case 'complete':
-            setState({ status: 'complete', isStreaming: false });
-            stopStream();
-            break;
+        setState({ status: 'streaming', error: null, isStreaming: true });
+        if (await isOndcNetworkSearchReady()) {
+          const collected = await ondcSearchAndCollect(
+            params.query?.trim() || params.category || 'grocery',
+            { city: 'std:080', pollMs: 2000, attempts: 10, preferBppId: OUR_BPP_ID },
+          );
+          setState({
+            status: 'complete',
+            items: mapOndcCatalogToBeckn(collected.items),
+            hasMore: false,
+            error: null,
+            isStreaming: false,
+          });
+          return;
         }
+        const demo = await searchCommerceItems(params.query || undefined);
+        setState({
+          status: 'complete',
+          items: (demo.items ?? []) as BecknItem[],
+          hasMore: false,
+          error: null,
+          isStreaming: false,
+        });
       } catch (err) {
         setState({
           status: 'error',
-          error: err instanceof Error ? err.message : 'Failed to parse stream event',
+          items: [],
+          error: err instanceof Error ? err.message : 'ONDC search failed',
+          hasMore: false,
           isStreaming: false,
         });
-        stopStream();
       }
-    };
-
-    eventSource.onerror = () => {
-      setState({
-        status: 'error',
-        error: 'Stream connection error',
-        isStreaming: false,
-      });
-      stopStream();
-    };
+    })();
   }, [stopStream]);
 
   return {

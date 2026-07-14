@@ -121,7 +121,7 @@ describe('buyer protected action policy', () => {
           trustState,
           auditSubjectId: 'session-1',
         }),
-      ).toThrow('Verified buyer trust is required before checkout');
+      ).toThrow('Sign in or verified trust is required before checkout');
     },
   );
 
@@ -133,24 +133,60 @@ describe('buyer protected action policy', () => {
         trustState: 'verified',
         auditSubjectId: 'payment-profile-1',
       }),
-    ).toThrow('Wallet address is required before protected buyer actions can be sent.');
+    ).toThrow('Sign in is required before protected buyer actions can be sent.');
+  });
+
+  it('allows session principal without wallet for protected buyer actions', () => {
+    const policy = buildProtectedBuyerActionPolicy({
+      action: 'high_value_checkout',
+      walletAddress: null,
+      trustState: 'verified',
+      subjectId: 'principal:demo:booth',
+      auditSubjectId: 'session-1',
+    });
+    expect(policy.wallet_address).toBe('principal:demo:booth');
+    expect(policy.subject_id).toBe('principal:demo:booth');
   });
 
   it('blocks local checkout order creation unless buyer trust is verified', () => {
     expect(() =>
-      createVerifiedDemoOrder('session-1', session, quote, deliveryAddress, 'manual_review'),
-    ).toThrow('Verified buyer trust is required before checkout');
+      createVerifiedDemoOrder(
+        'session-1',
+        session,
+        quote,
+        deliveryAddress,
+        'manual_review',
+        'principal:test:buyer',
+      ),
+    ).toThrow('Sign in or verified trust is required before checkout');
 
-    const order = createVerifiedDemoOrder('session-1', session, quote, deliveryAddress, 'verified', 'card');
+    const order = createVerifiedDemoOrder(
+      'session-1',
+      session,
+      quote,
+      deliveryAddress,
+      'verified',
+      'principal:test:buyer',
+      'card',
+    );
     expect(order.status).toBe('created');
     expect(order.payment?.type).toBe('card');
   });
 
   it('blocks local cancellation and support case writes unless buyer trust is verified', () => {
-    const order = createVerifiedDemoOrder('session-1', session, quote, deliveryAddress, 'verified');
+    const order = createVerifiedDemoOrder(
+      'session-1',
+      session,
+      quote,
+      deliveryAddress,
+      'verified',
+      'principal:test:buyer',
+    );
 
-    expect(() => cancelVerifiedDemoOrder(order.id, 'revoked_or_blocked')).toThrow(
-      'Verified buyer trust is required before checkout',
+    expect(() =>
+      cancelVerifiedDemoOrder(order.id, 'revoked_or_blocked', 'principal:test:buyer'),
+    ).toThrow(
+      'Sign in or verified trust is required before checkout',
     );
     expect(() =>
       createVerifiedLocalSupportCase(
@@ -162,7 +198,7 @@ describe('buyer protected action policy', () => {
         },
         'no_identity',
       ),
-    ).toThrow('Verified buyer trust is required before checkout');
+    ).toThrow('Sign in or verified trust is required before checkout');
 
     const supportCase = createVerifiedLocalSupportCase(
       {
@@ -174,7 +210,9 @@ describe('buyer protected action policy', () => {
       'verified',
     );
 
-    expect(cancelVerifiedDemoOrder(order.id, 'verified')?.status).toBe('cancelled');
+    expect(cancelVerifiedDemoOrder(order.id, 'verified', 'principal:test:buyer')?.status).toBe(
+      'cancelled',
+    );
     expect(listSupportCases(order.id)[0]?.case_id).toBe(supportCase.case_id);
   });
 });

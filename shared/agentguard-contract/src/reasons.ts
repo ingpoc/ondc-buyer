@@ -1,0 +1,27 @@
+export const DECISION_REASONS = [
+  "within_policy",
+  "approval_required_amount",
+  "approval_required_counterparty",
+  "approval_required_action",
+  "agent_paused",
+  "agent_revoked",
+  "mandate_missing",
+  "mandate_expired",
+  "policy_version_stale",
+  "action_not_allowed",
+  "resource_out_of_scope",
+  "counterparty_out_of_scope",
+  "amount_exceeded",
+  "quantity_exceeded",
+  "frequency_exceeded",
+  "aggregate_exceeded",
+  "approval_expired",
+  "approval_mismatch",
+  "approval_consumed",
+  "request_expired",
+  "nonce_replayed",
+  "principal_mismatch",
+  "execution_unknown",
+] as const;
+
+export type DecisionReason = (typeof DECISION_REASONS)[number];
