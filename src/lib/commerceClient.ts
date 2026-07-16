@@ -1,6 +1,7 @@
 import type { UCPItem, UCPOrder, UCPSession } from '../types';
 import { clearLocalSession } from './localCart';
 import { TRUST_API_URL } from './identityUrls';
+import { isLocalBrowserHost } from './loopback';
 
 export interface DemoCommerceItem {
   item_id: string;
@@ -42,7 +43,8 @@ interface ApiEnvelope<T> {
 }
 
 async function demoFetch<T>(endpoint: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${TRUST_API_URL}${endpoint}`, {
+  const base = isLocalBrowserHost() ? TRUST_API_URL : '';
+  const response = await fetch(`${base}${endpoint}`, {
     ...init,
     credentials: 'include',
     headers: {
@@ -75,7 +77,7 @@ export function mapDemoItemToBuyerItem(item: DemoCommerceItem): UCPItem {
       value: item.price_inr.toFixed(2),
     },
     images: [],
-    category: 'demo-commerce',
+    category: 'Grocery',
     _provider: item.seller_id || 'ONDC seller',
     provider: {
       id: item.seller_id || 'ondc-seller',
