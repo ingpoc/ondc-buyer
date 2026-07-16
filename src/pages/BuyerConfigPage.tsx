@@ -230,8 +230,8 @@ export function BuyerConfigPage() {
           </div>
           {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
           <p className="text-[11px] text-muted-foreground">
-            Demo activity survives within the current free-hosting instance, but may reset after a
-            restart or redeploy. Durable production storage is not enabled.
+            Activity survives within the current free-hosting instance, but may reset after a
+            restart or redeploy. Durable storage is not enabled.
           </p>
         </CardContent>
       </Card>

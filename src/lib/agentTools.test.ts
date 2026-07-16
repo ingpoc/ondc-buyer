@@ -73,6 +73,7 @@ describe('buyer agent tools cart path', () => {
   it('catalogSearchQuery strips NL filler for demo-commerce lookup', () => {
     expect(catalogSearchQuery('Find atta under 200 rupees and add one to cart')).toBe('atta');
     expect(catalogSearchQuery('AgentGuard PreProd Atta')).toBe('atta');
+    expect(catalogSearchQuery('whole wheat atta price under INR 100')).toBe('atta');
     expect(catalogSearchQuery('organic toned milk')).toBe('milk');
   });
 
@@ -192,5 +193,48 @@ describe('buyer agent tools cart path', () => {
     expect(coerceBuyerNavPath('cart')).toBe('/cart');
     expect(coerceBuyerNavPath('/cart')).toBe('/cart');
     expect(coerceBuyerNavPath('config')).toBe('/config');
+  });
+
+  it('clear_cart returns an explicit host mutation for every live cart line', async () => {
+    const result = await runBuyerTool(
+      'clear_cart',
+      {},
+      {
+        subjectId: 'principal:demo:test',
+        cartItems: [
+          { itemId: 'atta-1', name: 'Whole Wheat Atta', quantity: 1 },
+          { itemId: 'milk-1', name: 'Toned Milk', quantity: 2 },
+        ],
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.cartChanges).toEqual([{ action: 'clear' }]);
+    expect(result.navigateTo).toBe('/cart');
+  });
+
+  it('remove_from_cart resolves a first-time user product phrase from live cart context', async () => {
+    const result = await runBuyerTool(
+      'remove_from_cart',
+      { query: 'atta' },
+      {
+        subjectId: 'principal:demo:test',
+        cartItems: [{ itemId: 'atta-1', name: 'Whole Wheat Atta', quantity: 1 }],
+      },
+    );
+    expect(result.cartChanges).toEqual([{ action: 'remove', itemId: 'atta-1' }]);
+  });
+
+  it('set_cart_quantity uses the only cart line when the user says make it two', async () => {
+    const result = await runBuyerTool(
+      'set_cart_quantity',
+      { quantity: 2 },
+      {
+        subjectId: 'principal:demo:test',
+        cartItems: [{ itemId: 'atta-1', name: 'Whole Wheat Atta', quantity: 1 }],
+      },
+    );
+    expect(result.cartChanges).toEqual([
+      { action: 'set_quantity', itemId: 'atta-1', quantity: 2 },
+    ]);
   });
 });

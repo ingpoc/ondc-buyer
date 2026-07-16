@@ -176,7 +176,7 @@ export function OrdersPage() {
             </EmptyMedia>
             <EmptyTitle>No orders in this lane</EmptyTitle>
             <EmptyDescription>
-              Local demo orders will appear here after you move through checkout.
+              Orders will appear here after you move through checkout.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

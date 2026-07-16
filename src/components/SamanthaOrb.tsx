@@ -3,15 +3,17 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { TRUST_API_URL } from '../lib/identityUrls';
 import {
   BUYER_TOOL_DEFINITIONS,
+  catalogSearchQuery,
   coerceBuyerNavPath,
   resolveBuyerAddTarget,
   runBuyerTool,
   type BuyerToolName,
 } from '../lib/agentTools';
-import { listBuyerCatalogItems } from '../lib/buyerCatalogCache';
+import { listBuyerCatalogItems, waitForBuyerCatalogItems } from '../lib/buyerCatalogCache';
 import { extractRealtimeToolCalls } from '../lib/realtimeToolCalls';
 import { formatMemoryForPrompt, loadSamanthaMemory } from '../lib/samanthaMemory';
 import { subscribeBuyerRuntimeJob } from '../lib/samanthaRuntimeHandoff';
+import { createSamanthaSessionId, persistSamanthaEvent } from '../lib/samanthaTranscript';
 import { useCart, useSubject } from '../hooks';
 import { getMockBuyerItems } from '../lib/mockSearch';
 import { cn } from '../lib/utils';
@@ -25,14 +27,19 @@ const BUYER_ORB_INSTRUCTIONS =
   'Open cart / checkout / orders / config: call navigate_to to that path so the page changes. ' +
   'Add to cart: if Host context lists cached offers OR /results already shows offers, call add_to_cart immediately with item_id or query — never claim the catalog is empty when Host context has items, and do NOT search again. ' +
   'Only search_catalog before add when there is no Host context and no results yet. They land on /cart with the line visible. ' +
+  'Cart changes: use clear_cart to empty it, remove_from_cart for one line, and set_cart_quantity to change a quantity. Never say you lack these actions. ' +
+  'Host context is authoritative for the current page, visible offers, and live cart. A search result with can_assert_empty=false means offers are still loading, not that nothing exists. ' +
   'Checkout or pay: call checkout_commit (host fills cart total and session_id). Report AgentGuard allow / need_approval / deny honestly. ' +
   'Never ask for session ID, cart total, or amount_inr. ' +
   'Chain short tools in one turn when needed. Continue after each function_call_output until the short request is done. ' +
   'If the user asks for cart/checkout/orders while a search is running, call navigate_to and STOP — do not retry search_catalog after a timeout or navSuperseded. ' +
   'Long planning (weekly plan, budget, research): call delegate_to_runtime_agent once; say you started and will update them — never mention Cursor or /agent. ' +
-  'Never invent work. Short tools: search_catalog, navigate_to, add_to_cart, remember_preference, checkout_commit.';
+  'Never invent work. Short tools: search_catalog, navigate_to, add_to_cart, clear_cart, remove_from_cart, set_cart_quantity, remember_preference, checkout_commit.';
 
-function buildOutboundUserText(userText: string): string {
+function buildOutboundUserText(
+  userText: string,
+  host: { pathname: string; cartItems: Array<{ itemId: string; name: string; quantity: number }> },
+): string {
   const cached = listBuyerCatalogItems()
     .slice(0, 8)
     .map((item) => ({
@@ -40,12 +47,24 @@ function buildOutboundUserText(userText: string): string {
       name: item.name || item.descriptor?.name || item.id,
       price_inr: item.price?.value,
     }));
-  if (!cached.length) return userText;
   return (
     `${userText}\n\n` +
-    `[Host context — visible results cache (not typed by the user): ${JSON.stringify(cached)}. ` +
-    'If they asked to add an item, call add_to_cart now using an id or query from this list.]'
+    `[Host context — authoritative app state, not typed by the user: ${JSON.stringify({
+      current_page: host.pathname,
+      visible_results: cached,
+      live_cart: host.cartItems,
+    })}. ` +
+    'Use this state to resolve phrases such as “what I see”, “that one”, “my cart”, “remove it”, and “make it two”.]'
   );
+}
+
+function markSamanthaTurn(inFlight: boolean, phase: string): void {
+  if (typeof window === 'undefined') return;
+  (window as Window & { __samanthaTurn?: Record<string, unknown> }).__samanthaTurn = {
+    in_flight: inFlight,
+    phase,
+    at: Date.now(),
+  };
 }
 
 type OrbState = 'idle' | 'connecting' | 'listening' | 'error';
@@ -94,7 +113,7 @@ export function SamanthaOrb() {
   const locationRef = useRef(location.pathname);
   locationRef.current = location.pathname;
   const { subjectId, walletAddress } = useSubject();
-  const { addToCart, session, subtotal, refreshCart } = useCart();
+  const { addToCart, clearCart, removeFromCart, updateQuantity, session, subtotal, refreshCart } = useCart();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<OrbState>('idle');
   const [hint, setHint] = useState('Tap for Samantha (voice or text)');
@@ -106,7 +125,15 @@ export function SamanthaOrb() {
   const dcRef = useRef<RTCDataChannel | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const handledCallsRef = useRef<Set<string>>(new Set());
+  const turnToolCallCountRef = useRef(0);
+  const responseActiveRef = useRef(false);
+  const toolFollowupRequestedRef = useRef(false);
+  const toolFollowupSentRef = useRef(false);
   const replyBufRef = useRef('');
+  const transcriptSessionIdRef = useRef(createSamanthaSessionId('buyer'));
+  const lastPersistedReplyRef = useRef('');
+  const startInFlightRef = useRef(false);
+  const turnMutationKeysRef = useRef(new Set<string>());
   /** Queued while connecting — flushed when Realtime is listening. */
   const pendingTextRef = useRef<string | null>(null);
   /** Bumped when a non-search tool moves the UI — stale search navigateTo must not yank back. */
@@ -209,12 +236,21 @@ export function SamanthaOrb() {
     async (name: string, callId: string, argsJson: string) => {
       if (handledCallsRef.current.has(callId)) return;
       handledCallsRef.current.add(callId);
+      turnToolCallCountRef.current += 1;
+      markSamanthaTurn(true, `tool:${name}`);
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(argsJson || '{}') as Record<string, unknown>;
       } catch {
         args = {};
       }
+      void persistSamanthaEvent({
+        role: 'buyer',
+        sessionId: transcriptSessionIdRef.current,
+        eventType: 'tool_call',
+        content: name,
+        metadata: { call_id: callId, arguments: args },
+      }).catch(() => undefined);
       if (name === 'add_to_cart') {
         // Network search_catalog returns empty ids (ACK-first). Resolve from ResultsPage cache.
         const resolved = await resolveBuyerAddTarget(args);
@@ -258,7 +294,7 @@ export function SamanthaOrb() {
       // Visible journey: move the page as soon as the tool starts (before long network polls).
       const navEpochAtStart = navEpochRef.current;
       if (name === 'search_catalog') {
-        const q = String(args.query ?? '').trim() || 'grocery';
+        const q = catalogSearchQuery(String(args.query ?? '')) || 'grocery';
         // Do not yank off cart/checkout/orders/config — navigate_to/add already won.
         // Intentional search from those pages still lands via result.navigateTo when not superseded.
         if (!isCommittedBuyerPath(locationRef.current)) {
@@ -282,30 +318,111 @@ export function SamanthaOrb() {
         runBuyerTool(name as BuyerToolName, args, {
           walletAddress: walletAddress || '',
           subjectId: subjectId || '',
+          cartItems: (session?.items ?? []).map((entry) => ({
+            itemId: entry.item.id,
+            name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
+            quantity: entry.quantity,
+          })),
         }),
         new Promise<Awaited<ReturnType<typeof runBuyerTool>>>((resolve) => {
           window.setTimeout(() => {
-            const superseded = name === 'search_catalog' && navEpochRef.current !== navEpochAtStart;
+            const isSearch = name === 'search_catalog';
+            const superseded = isSearch && navEpochRef.current !== navEpochAtStart;
+            const stableQuery = catalogSearchQuery(String(args.query ?? '')) || 'grocery';
             resolve({
-              ok: false,
+              ok: isSearch && !superseded,
               tool: name as BuyerToolName,
               message: superseded
                 ? 'Search timed out after you already moved — staying on your current page. Do not retry search unless the user asks again.'
-                : 'That took too long on my side — the page may still be updating. Try again or tell me what you see.',
+                : isSearch
+                  ? `Opened results for “${stableQuery}”. Offers are still loading.`
+                  : 'That took too long on my side. Try again or tell me what you see.',
+              data: isSearch
+                ? { items: [], count: 0, source: 'ondc-network', loading: true }
+                : undefined,
               navigateTo:
-                name === 'search_catalog' && !superseded
-                  ? `/results?category=grocery&q=${encodeURIComponent(String(args.query ?? '').trim() || 'grocery')}`
+                isSearch && !superseded
+                  ? `/results?category=grocery&q=${encodeURIComponent(stableQuery)}`
                   : undefined,
             });
           }, 12_000);
         }),
       ]);
+      const mutationTarget = String(
+        result.cartAdds?.[0]?.itemId || result.cartChanges?.[0]?.itemId || '',
+      );
+      const mutationKey = result.cartAdds?.length || result.cartChanges?.length
+        ? `${name}:${mutationTarget}:${String(args.quantity ?? '')}`
+        : '';
+      const duplicateMutation = Boolean(mutationKey && turnMutationKeysRef.current.has(mutationKey));
+      if (mutationKey && !duplicateMutation) turnMutationKeysRef.current.add(mutationKey);
       const navSuperseded = name === 'search_catalog' && navEpochRef.current !== navEpochAtStart;
-      const hostMessage = navSuperseded
+      let hostMessage = navSuperseded
         ? 'Search finished but you already navigated away — left you on your current page.'
         : result.message;
       setHint(hostMessage);
-      // Evidence for Hermes / operators — tool applied in the UI host.
+      let resultData = result.data;
+      if (result.cartAdds?.length && !duplicateMutation) {
+        for (const add of result.cartAdds) {
+          const match = add.item || getMockBuyerItems().find((item) => item.id === add.itemId);
+          if (match) {
+            await addToCart(match as Parameters<typeof addToCart>[0], add.quantity);
+          } else {
+            setHint(`Cart add failed: unknown ${add.itemId}`);
+          }
+        }
+        navEpochRef.current += 1;
+      }
+      if (result.cartChanges?.length && !duplicateMutation) {
+        for (const change of result.cartChanges) {
+          if (change.action === 'clear') {
+            await clearCart();
+          } else if (change.action === 'remove' && change.itemId) {
+            await removeFromCart(change.itemId);
+          } else if (change.action === 'set_quantity' && change.itemId && change.quantity != null) {
+            await updateQuantity(change.itemId, change.quantity);
+          }
+        }
+        navEpochRef.current += 1;
+        await refreshCart();
+      }
+      // Navigate after cart mutations so the destination page shows updated state.
+      // Do not let a finishing search_catalog yank the user back off cart/checkout/etc.
+      if (result.navigateTo && !navSuperseded) {
+        if (name !== 'search_catalog') {
+          navEpochRef.current += 1;
+        }
+        navigate(result.navigateTo);
+      }
+      if (
+        name === 'search_catalog' &&
+        result.ok &&
+        !navSuperseded &&
+        result.data?.loading === true &&
+        Number(result.data?.count ?? 0) === 0
+      ) {
+        const stableQuery = catalogSearchQuery(String(args.query ?? ''));
+        const visible = await waitForBuyerCatalogItems(stableQuery, 12_000);
+        if (visible.length) {
+          const items = visible.slice(0, 8).map((item) => ({
+            id: item.id,
+            name: item.name || item.descriptor?.name || item.id,
+            price_inr: item.price?.value,
+            provider: item._provider,
+          }));
+          resultData = { ...result.data, items, count: items.length, loading: false, result_state: 'visible' };
+          hostMessage = `Showing ${items.length} offer${items.length === 1 ? '' : 's'} for “${stableQuery}” on the results page.`;
+        } else {
+          resultData = {
+            ...result.data,
+            result_state: 'loading',
+            can_assert_empty: false,
+          };
+          hostMessage = `Opened results for “${stableQuery}”. Offers are still loading.`;
+        }
+        setHint(hostMessage);
+      }
+      // Evidence for Hermes / operators — tool and rendered-state grounding applied in the UI host.
       try {
         const w = window as Window & {
           __samanthaTools?: Array<Record<string, unknown>>;
@@ -321,6 +438,8 @@ export function SamanthaOrb() {
           receiptId: result.receiptId ?? null,
           navigateTo: navSuperseded ? null : (result.navigateTo ?? null),
           cartAdds: result.cartAdds?.map((a) => a.itemId) ?? [],
+          cartChanges: result.cartChanges ?? [],
+          data: resultData ?? null,
           amount_inr: args.amount_inr ?? null,
           session_id: args.session_id ?? null,
           navSuperseded,
@@ -328,25 +447,21 @@ export function SamanthaOrb() {
       } catch {
         /* ignore */
       }
-      if (result.cartAdds?.length) {
-        for (const add of result.cartAdds) {
-          const match = add.item || getMockBuyerItems().find((item) => item.id === add.itemId);
-          if (match) {
-            await addToCart(match as Parameters<typeof addToCart>[0], add.quantity);
-          } else {
-            setHint(`Cart add failed: unknown ${add.itemId}`);
-          }
-        }
-        navEpochRef.current += 1;
-      }
-      // Navigate after cart mutations so the destination page shows updated state.
-      // Do not let a finishing search_catalog yank the user back off cart/checkout/etc.
-      if (result.navigateTo && !navSuperseded) {
-        if (name !== 'search_catalog') {
-          navEpochRef.current += 1;
-        }
-        navigate(result.navigateTo);
-      }
+      void persistSamanthaEvent({
+        role: 'buyer',
+        sessionId: transcriptSessionIdRef.current,
+        eventType: 'tool_result',
+        content: duplicateMutation ? 'Duplicate cart mutation ignored.' : hostMessage,
+        metadata: {
+          call_id: callId,
+          tool: name,
+          ok: result.ok,
+          duplicate_mutation: duplicateMutation,
+          cart_adds: result.cartAdds?.map((entry) => ({ item_id: entry.itemId, quantity: entry.quantity })),
+          cart_changes: result.cartChanges,
+          navigate_to: navSuperseded ? null : result.navigateTo,
+        },
+      }).catch(() => undefined);
       if (name === 'checkout_commit') {
         try {
           await refreshCart();
@@ -374,16 +489,25 @@ export function SamanthaOrb() {
                 quantity: a.quantity,
                 name: a.item.name,
               })),
+              cartChanges: result.cartChanges,
               decision: result.decision,
               receiptId: result.receiptId,
-              data: result.data,
+              data: resultData,
             }),
           },
         })
       );
-      dc.send(JSON.stringify({ type: 'response.create' }));
+      toolFollowupRequestedRef.current = true;
+      if (!responseActiveRef.current && !toolFollowupSentRef.current) {
+        toolFollowupSentRef.current = true;
+        responseActiveRef.current = true;
+        dc.send(JSON.stringify({ type: 'response.create' }));
+        markSamanthaTurn(true, 'tool_followup');
+      } else {
+        markSamanthaTurn(true, 'tool_followup_wait');
+      }
     },
-    [addToCart, navigate, refreshCart, session, subjectId, subtotal, walletAddress]
+    [addToCart, clearCart, navigate, refreshCart, removeFromCart, session, subjectId, subtotal, updateQuantity, walletAddress]
   );
   handleToolCallRef.current = handleToolCall;
 
@@ -392,7 +516,17 @@ export function SamanthaOrb() {
     pcRef.current = null;
     dcRef.current = null;
     handledCallsRef.current.clear();
+    turnToolCallCountRef.current = 0;
+    responseActiveRef.current = false;
+    toolFollowupRequestedRef.current = false;
+    toolFollowupSentRef.current = false;
+    markSamanthaTurn(false, 'stopped');
     replyBufRef.current = '';
+    void persistSamanthaEvent({
+      role: 'buyer',
+      sessionId: transcriptSessionIdRef.current,
+      eventType: 'session_stopped',
+    }).catch(() => undefined);
     if (audioRef.current) {
       audioRef.current.srcObject = null;
     }
@@ -427,6 +561,7 @@ export function SamanthaOrb() {
         audio: {
           input: {
             turn_detection: usedMic ? { type: 'semantic_vad' } : null,
+            transcription: usedMic ? { model: 'gpt-4o-mini-transcribe' } : null,
           },
         },
       };
@@ -462,9 +597,24 @@ export function SamanthaOrb() {
         if (msg.type === 'session.updated') {
           setState('listening');
           setHint(usedMic ? 'Listening + text ready' : 'Text mode ready (no mic)');
+          void persistSamanthaEvent({
+            role: 'buyer',
+            sessionId: transcriptSessionIdRef.current,
+            eventType: 'session_started',
+            metadata: { mode: usedMic ? 'voice' : 'text', model },
+          }).catch(() => undefined);
           const pending = pendingTextRef.current;
           if (pending && dc.readyState === 'open') {
             pendingTextRef.current = null;
+            turnToolCallCountRef.current = 0;
+            toolFollowupRequestedRef.current = false;
+            toolFollowupSentRef.current = false;
+            markSamanthaTurn(true, 'user_text');
+            turnMutationKeysRef.current.clear();
+            void persistSamanthaEvent({
+              role: 'buyer', sessionId: transcriptSessionIdRef.current,
+              eventType: 'user_text', content: pending,
+            }).catch(() => undefined);
             replyBufRef.current = '';
             setReply('');
             setDraft('');
@@ -474,25 +624,55 @@ export function SamanthaOrb() {
                 item: {
                   type: 'message',
                   role: 'user',
-                  content: [{ type: 'input_text', text: buildOutboundUserText(pending) }],
+                  content: [
+                    {
+                      type: 'input_text',
+                      text: buildOutboundUserText(pending, {
+                        pathname: locationRef.current,
+                        cartItems: (session?.items ?? []).map((entry) => ({
+                          itemId: entry.item.id,
+                          name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
+                          quantity: entry.quantity,
+                        })),
+                      }),
+                    },
+                  ],
                 },
               })
             );
+            responseActiveRef.current = true;
             dc.send(JSON.stringify({ type: 'response.create' }));
             setHint('Samantha is thinking…');
           }
         }
         if (msg.type === 'error') {
+          responseActiveRef.current = false;
           const detail = msg.error?.message || msg.message || msg.error?.code || 'session error';
           setState('error');
           setHint(`Samantha error: ${String(detail).slice(0, 160)}`);
+          markSamanthaTurn(false, 'error');
+          void persistSamanthaEvent({
+            role: 'buyer', sessionId: transcriptSessionIdRef.current,
+            eventType: 'error', content: String(detail).slice(0, 4_000),
+          }).catch(() => undefined);
         }
-        if (
-          msg.type === 'response.created' &&
-          replyBufRef.current &&
-          !/\s$/.test(replyBufRef.current)
-        ) {
-          replyBufRef.current += ' ';
+        if (msg.type === 'conversation.item.input_audio_transcription.completed') {
+          const transcript = String(msg.transcript || msg.text || '').trim();
+          if (transcript) {
+            turnMutationKeysRef.current.clear();
+            void persistSamanthaEvent({
+              role: 'buyer', sessionId: transcriptSessionIdRef.current,
+              eventType: 'user_voice_transcript', content: transcript,
+            }).catch(() => undefined);
+          }
+        }
+        if (msg.type === 'response.created') {
+          responseActiveRef.current = true;
+          toolFollowupRequestedRef.current = false;
+          toolFollowupSentRef.current = false;
+          if (replyBufRef.current && !/\s$/.test(replyBufRef.current)) {
+            replyBufRef.current += ' ';
+          }
         }
         if (
           msg.type === 'response.output_audio_transcript.delta' ||
@@ -502,14 +682,27 @@ export function SamanthaOrb() {
         ) {
           appendReply(String(msg.delta || msg.transcript || msg.text || ''));
         }
-        if (
-          msg.type === 'response.output_audio_transcript.done' ||
-          msg.type === 'response.audio_transcript.done' ||
-          msg.type === 'response.done'
-        ) {
+        if (msg.type === 'response.done') {
+          responseActiveRef.current = false;
+          if (toolFollowupRequestedRef.current && !toolFollowupSentRef.current) {
+            toolFollowupSentRef.current = true;
+            responseActiveRef.current = true;
+            dc.send(JSON.stringify({ type: 'response.create' }));
+            markSamanthaTurn(true, 'tool_followup');
+          } else {
+            markSamanthaTurn(false, 'response_done');
+          }
           // Do not clobber tool result hints (e.g. "Found 1 item…").
-          if (replyBufRef.current.trim() && handledCallsRef.current.size === 0) {
+          if (replyBufRef.current.trim() && turnToolCallCountRef.current === 0) {
             setHint('Samantha replied');
+          }
+          const finalReply = replyBufRef.current.trim();
+          if (finalReply && finalReply !== lastPersistedReplyRef.current) {
+            lastPersistedReplyRef.current = finalReply;
+            void persistSamanthaEvent({
+              role: 'buyer', sessionId: transcriptSessionIdRef.current,
+              eventType: 'assistant_text', content: finalReply,
+            }).catch(() => undefined);
           }
         }
         const calls = extractRealtimeToolCalls(msg);
@@ -526,7 +719,16 @@ export function SamanthaOrb() {
   }
 
   async function startSession() {
-    if (state === 'listening' || state === 'connecting') return;
+    if (startInFlightRef.current || state === 'listening' || state === 'connecting') return;
+    startInFlightRef.current = true;
+    try {
+      await startSessionConnection();
+    } finally {
+      startInFlightRef.current = false;
+    }
+  }
+
+  async function startSessionConnection() {
     setState('connecting');
     setHint('Connecting Samantha…');
     // Re-probe on open: avoids false "not configured" while status is still loading
@@ -539,6 +741,12 @@ export function SamanthaOrb() {
     }
     setReply('');
     replyBufRef.current = '';
+    transcriptSessionIdRef.current = createSamanthaSessionId('buyer');
+    lastPersistedReplyRef.current = '';
+    turnToolCallCountRef.current = 0;
+    toolFollowupRequestedRef.current = false;
+    toolFollowupSentRef.current = false;
+    markSamanthaTurn(false, 'connecting_session');
     const memory = loadSamanthaMemory(subjectId);
     const secretRes = await fetch(`${TRUST_API_URL}/api/realtime/client-secret`, {
       method: 'POST',
@@ -648,6 +856,15 @@ export function SamanthaOrb() {
       return;
     }
     replyBufRef.current = '';
+    turnToolCallCountRef.current = 0;
+    toolFollowupRequestedRef.current = false;
+    toolFollowupSentRef.current = false;
+    markSamanthaTurn(true, 'user_text');
+    turnMutationKeysRef.current.clear();
+    void persistSamanthaEvent({
+      role: 'buyer', sessionId: transcriptSessionIdRef.current,
+      eventType: 'user_text', content: text,
+    }).catch(() => undefined);
     setReply('');
     pendingTextRef.current = null;
     dc.send(
@@ -656,10 +873,23 @@ export function SamanthaOrb() {
         item: {
           type: 'message',
           role: 'user',
-          content: [{ type: 'input_text', text: buildOutboundUserText(text) }],
+          content: [
+            {
+              type: 'input_text',
+              text: buildOutboundUserText(text, {
+                pathname: locationRef.current,
+                cartItems: (session?.items ?? []).map((entry) => ({
+                  itemId: entry.item.id,
+                  name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
+                  quantity: entry.quantity,
+                })),
+              }),
+            },
+          ],
         },
       })
     );
+    responseActiveRef.current = true;
     dc.send(JSON.stringify({ type: 'response.create' }));
     setDraft('');
     setHint('Samantha is thinking…');
@@ -704,9 +934,10 @@ export function SamanthaOrb() {
           <form className="mt-3 flex gap-2" onSubmit={sendText}>
             <input
               type="text"
+              aria-label="Ask Samantha"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={state === 'connecting' ? 'Type while Samantha connects' : 'Ask Samantha'}
+              placeholder="Ask Samantha"
               data-testid="samantha-orb-text"
               className="min-w-0 flex-1 rounded-full border border-border bg-background px-3 py-2 text-xs outline-none transition focus:ring-2 focus:ring-ring/40"
             />
@@ -734,7 +965,7 @@ export function SamanthaOrb() {
         data-testid="samantha-orb"
         onClick={toggle}
         className={cn(
-          'pointer-events-auto flex size-14 items-center justify-center rounded-full text-sm font-semibold transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+          'pointer-events-auto flex h-12 items-center justify-center rounded-full px-4 text-sm font-semibold transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
           state === 'listening' &&
             'bg-primary text-primary-foreground shadow-[0_8px_24px_oklch(0.48_0.07_195_/_0.35)] ring-2 ring-primary/30',
           state === 'connecting' && 'bg-secondary text-foreground ring-2 ring-border',
@@ -743,7 +974,7 @@ export function SamanthaOrb() {
             'bg-primary text-primary-foreground shadow-[0_8px_24px_oklch(0.48_0.07_195_/_0.28)] hover:scale-105 active:scale-[0.98]'
         )}
       >
-        S
+        Samantha
       </button>
     </div>
   );

@@ -83,7 +83,7 @@ const MOCK_BUYER_ITEMS: UCPItem[] = [
     description: 'Mock catalog item for search and product-detail browser validation.',
     descriptor: {
       name: 'Filter Coffee Blend 500g',
-      short_desc: 'Demo listing for buyer journey coverage.',
+      short_desc: 'Local listing for buyer journey coverage.',
     },
     price: {
       currency: 'INR',

@@ -52,7 +52,7 @@ async function demoFetch<T>(endpoint: string, init: RequestInit = {}): Promise<T
   });
   const body = (await response.json().catch(() => ({}))) as Partial<ApiEnvelope<T>>;
   if (!response.ok || body.success === false) {
-    throw new Error(body.detail || body.message || `Demo commerce request failed (${response.status})`);
+    throw new Error(body.detail || body.message || `Commerce request failed (${response.status})`);
   }
   return body.data as T;
 }
@@ -76,10 +76,10 @@ export function mapDemoItemToBuyerItem(item: DemoCommerceItem): UCPItem {
     },
     images: [],
     category: 'demo-commerce',
-    _provider: item.seller_id || 'Demo seller',
+    _provider: item.seller_id || 'ONDC seller',
     provider: {
-      id: item.seller_id || 'demo-seller',
-      name: item.seller_id || 'Demo seller',
+      id: item.seller_id || 'ondc-seller',
+      name: item.seller_id || 'ONDC seller',
     },
   };
 }
@@ -121,7 +121,7 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
       providerName: 'Simulated ONDC logistics',
       tracking: {
         status,
-        statusMessage: `Shared demo commerce transaction ${order.transaction_id}`,
+        statusMessage: `Commerce transaction ${order.transaction_id}`,
       },
     },
     payment: {

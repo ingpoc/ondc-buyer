@@ -16,7 +16,7 @@ const STATE_META: Record<
   }
 > = {
   no_identity: {
-    label: 'Unsigned',
+    label: 'Sign in required',
     chipClassName: 'bg-muted text-muted-foreground',
     panelClassName: 'border-border/70 bg-card text-foreground',
     icon: ShieldAlert,
@@ -131,7 +131,7 @@ export function TrustNotice({
           <Icon className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-2">
             <Badge variant="secondary" className={cn('rounded-full border-0', meta.chipClassName)}>
-              Trust check: {meta.label}
+              Access: {meta.label}
             </Badge>
             <p className="max-w-2xl text-sm leading-6">
               {trustMessage(state, reason, error)}

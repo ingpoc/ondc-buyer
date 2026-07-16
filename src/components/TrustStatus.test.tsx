@@ -5,14 +5,14 @@ import type { PortfolioTrustState } from '../lib/trust';
 
 describe('TrustStatus', () => {
   it.each([
-    ['no_identity', 'Unsigned', 'Sign in before elevated buyer actions'],
+    ['no_identity', 'Sign in required', 'Sign in before elevated buyer actions'],
     ['identity_present_unverified', 'Unverified', 'Identity is unverified'],
     ['manual_review', 'Manual review', 'Elevated commerce actions stay paused'],
     ['revoked_or_blocked', 'Blocked', 'blocked or revoked'],
   ] as const)('explains blocked buyer actions for %s', (state, label, message) => {
     render(<TrustNotice state={state} />);
 
-    expect(screen.getByText(`Trust check: ${label}`)).toBeInTheDocument();
+    expect(screen.getByText(`Access: ${label}`)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(message, 'i'))).toBeInTheDocument();
   });
 
@@ -22,7 +22,7 @@ describe('TrustStatus', () => {
   });
 
   it.each([
-    ['no_identity', 'Trust Unsigned'],
+    ['no_identity', 'Trust Sign in required'],
     ['identity_present_unverified', 'Trust Unverified'],
     ['verified', 'Trust Verified'],
     ['manual_review', 'Trust Manual review'],

@@ -5,12 +5,14 @@ import { useSubject, useTrustState } from '../hooks';
 import { TrustNotice } from '../components/TrustStatus';
 import { elevatedTrustSatisfied } from '../lib/trust';
 import { Button } from '../components/ui/button';
+import { useAuthContext } from '../contexts/AuthContext';
 
 export function SearchPage(): JSX.Element {
   const navigate = useNavigate();
   const { walletAddress, principalId } = useSubject();
   const trust = useTrustState(walletAddress);
   const elevatedOk = elevatedTrustSatisfied(trust.state, principalId);
+  const { isAuthenticated } = useAuthContext();
 
   function handleSearch(category: string, query: string): void {
     const normalized = String(query ?? '').trim();
@@ -22,18 +24,20 @@ export function SearchPage(): JSX.Element {
       <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
         <div className="flex flex-col gap-4">
           <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            Ask Samantha. Shop the network.
+            {isAuthenticated ? 'Ask Samantha. Shop the network.' : 'Shop the ONDC network.'}
           </h1>
           <p className="max-w-[42ch] text-base leading-relaxed text-muted-foreground">
             Your agent finds offers and checks out under AgentGuard limits you control.
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
-            <Button asChild className="rounded-full px-5 active:scale-[0.98]">
-              <Link to="/agent">
-                <Bot data-icon="inline-start" />
-                Ask Samantha
-              </Link>
-            </Button>
+            {isAuthenticated ? (
+              <Button asChild className="rounded-full px-5 active:scale-[0.98]">
+                <Link to="/agent">
+                  <Bot data-icon="inline-start" />
+                  Ask Samantha
+                </Link>
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -47,7 +51,7 @@ export function SearchPage(): JSX.Element {
         </div>
 
         <div className="rounded-2xl border border-border/70 bg-card/90 p-5 shadow-[var(--surface-lift)]">
-          <div className="text-sm font-medium text-foreground">Agent status</div>
+          <div className="text-sm font-medium text-foreground">Checkout access</div>
           <dl className="mt-4 grid gap-3 text-sm">
             <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
               <dt className="text-muted-foreground">Trust</dt>
@@ -61,10 +65,12 @@ export function SearchPage(): JSX.Element {
                 {elevatedOk ? 'AgentGuard enabled' : 'Locked'}
               </dd>
             </div>
-            <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-muted-foreground">Companion</dt>
-              <dd className="font-medium text-primary">Samantha orb</dd>
-            </div>
+            {isAuthenticated ? (
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-muted-foreground">Shopping assistant</dt>
+                <dd className="font-medium text-primary">Available</dd>
+              </div>
+            ) : null}
           </dl>
         </div>
       </section>

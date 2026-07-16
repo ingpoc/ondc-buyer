@@ -113,7 +113,12 @@ export function SearchBar({
             </FieldContent>
           </Field>
 
-          <Button type="submit" size="lg" className="w-full rounded-full lg:w-auto lg:min-w-40">
+          <Button
+            type="submit"
+            size="lg"
+            aria-label="Search catalog"
+            className="w-full rounded-full lg:w-auto lg:min-w-40"
+          >
             Search
           </Button>
         </div>

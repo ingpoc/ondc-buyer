@@ -6,6 +6,21 @@ import type { UCPItem } from '../types';
 import type { OndcCatalogItem } from './ondc/protocolClient';
 
 const byId = new Map<string, UCPItem>();
+const CACHE_CHANGED_EVENT = 'buyer-catalog-cache-changed';
+
+function itemsMatchingQuery(query: string): UCPItem[] {
+  const tokens = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+  const items = listBuyerCatalogItems();
+  if (!tokens.length) return items;
+  return items.filter((item) => {
+    const haystack = `${item.name || ''} ${item.descriptor?.name || ''}`.toLowerCase();
+    return tokens.some((token) => haystack.includes(token));
+  });
+}
 
 export function mapOndcCatalogItemToBuyerItem(item: OndcCatalogItem): UCPItem {
   const name = String(item.name || item.id || 'ONDC item');
@@ -35,6 +50,7 @@ export function rememberBuyerCatalogItems(items: UCPItem[]): void {
     if (typeof window !== 'undefined') {
       (window as Window & { __buyerCatalogCacheIds?: string[] }).__buyerCatalogCacheIds =
         Array.from(byId.keys()).slice(-24);
+      window.dispatchEvent(new CustomEvent(CACHE_CHANGED_EVENT));
     }
   } catch {
     /* ignore */
@@ -94,4 +110,27 @@ export function lookupBuyerCatalogByQuery(query: string): UCPItem | null {
 
 export function clearBuyerCatalogCache(): void {
   byId.clear();
+}
+
+/** Wait briefly for ResultsPage to paint/cache offers after an ACK-first search. */
+export function waitForBuyerCatalogItems(query: string, timeoutMs = 4000): Promise<UCPItem[]> {
+  const current = itemsMatchingQuery(query);
+  if (current.length || typeof window === 'undefined') return Promise.resolve(current);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (items: UCPItem[]) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener(CACHE_CHANGED_EVENT, onChanged);
+      window.clearTimeout(timer);
+      resolve(items);
+    };
+    const onChanged = () => {
+      const items = itemsMatchingQuery(query);
+      if (items.length) finish(items);
+    };
+    const timer = window.setTimeout(() => finish(itemsMatchingQuery(query)), timeoutMs);
+    window.addEventListener(CACHE_CHANGED_EVENT, onChanged);
+  });
 }

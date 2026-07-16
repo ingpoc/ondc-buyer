@@ -151,7 +151,7 @@ function SnapshotPanel({ snapshot }: { snapshot: BuyerAgentSnapshot }) {
       <SnapshotCard
         label="Catalog"
         value={String(snapshot.catalog.total_items)}
-        helper="Mock buyer inventory available to the agent tool layer."
+        helper="Items currently available for Samantha to search."
       />
       <SnapshotCard
         label="Cart"
@@ -458,7 +458,7 @@ export function AgentChatPage(): JSX.Element {
               : 'rounded-full bg-secondary text-secondary-foreground'
           }
         >
-          Runtime {runtime.auth_mode}
+          {runtime.runtime_available ? 'Samantha ready' : 'Samantha unavailable'}
         </Badge>
         <Badge
           variant="secondary"
@@ -471,9 +471,6 @@ export function AgentChatPage(): JSX.Element {
           {elevatedTrustSatisfied(trust.state, principalId)
             ? 'Elevated actions available'
             : 'Read-only buyer guidance'}
-        </Badge>
-        <Badge variant="outline" className="rounded-full">
-          {runtime.model}
         </Badge>
         <Badge variant="outline" className="rounded-full">
           {usageLabel}
@@ -489,11 +486,8 @@ export function AgentChatPage(): JSX.Element {
 
       {subjectId && !runtime.runtime_available ? (
         <NoticeCard
-          title="Cursor runtime unavailable"
-          description={
-            runtime.blocked_reason ??
-            'Set CURSOR_API_KEY on the FlatWatch backend (:43104) and restart the dev stack.'
-          }
+          title="Samantha is temporarily unavailable"
+          description="Please try again after the service reconnects."
         />
       ) : null}
 
@@ -517,7 +511,7 @@ export function AgentChatPage(): JSX.Element {
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   Buyer agent
                 </div>
-                <CardTitle className="text-2xl">Locked-down buyer tool run</CardTitle>
+                <CardTitle className="text-2xl">Shopping request</CardTitle>
               </div>
               <Badge variant="outline" className="rounded-full">
                 Session: {sessionIdRef.current.slice(0, 12)}
@@ -600,8 +594,8 @@ export function AgentChatPage(): JSX.Element {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                The agent uses a locked-down buyer tool layer for search, product detail, cart state,
-                order status, and trust-aware checkout guidance.
+                Samantha can search, review product details, manage your cart, and prepare checkout.
+                Payment still requires your explicit approval.
               </p>
             </CardFooter>
           </Card>
@@ -617,8 +611,7 @@ export function AgentChatPage(): JSX.Element {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                The brief reflects the structured result after the agent uses the locked-down buyer
-                tool layer.
+                This summary reflects Samantha's latest completed shopping action.
               </CardContent>
             </Card>
 

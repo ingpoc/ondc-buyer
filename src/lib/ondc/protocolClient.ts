@@ -11,6 +11,7 @@ export interface OndcProtocolEnv {
   VITE_ONDC_BAP_URI?: string;
   VITE_ONDC_GATEWAY_URL?: string;
   VITE_ONDC_REGISTRY_URL?: string;
+  VITE_ONDC_CONTROL_PLANE_URL?: string;
 }
 
 export function resolveOndcProtocolConfig(env: OndcProtocolEnv) {
@@ -30,6 +31,9 @@ export function resolveOndcProtocolConfig(env: OndcProtocolEnv) {
 }
 
 const config = resolveOndcProtocolConfig(import.meta.env);
+const ONDC_CONTROL_PLANE_URL = (
+  import.meta.env.VITE_ONDC_CONTROL_PLANE_URL?.trim() || TRUST_API_URL
+).replace(/\/+$/, '');
 
 export const ONDC_PROTOCOL_CONFIGURED = config.configured;
 
@@ -66,7 +70,7 @@ export async function fetchGateway(
 ): Promise<Response> {
   const retries = opts?.retries ?? 5;
   const retryMs = opts?.retryMs ?? 1500;
-  const url = path.startsWith('http') ? path : `${TRUST_API_URL}${path}`;
+  const url = path.startsWith('http') ? path : `${ONDC_CONTROL_PLANE_URL}${path}`;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {

@@ -350,7 +350,7 @@ export function CheckoutPage() {
 
         setQuote(createLocalQuote(session, deliveryAddress));
         setSubmitError(
-          'Live checkout service is unavailable. Review the local demo quote, then place the order to complete checkout.'
+          'Live checkout service is unavailable. Review the local quote, then place the order to complete checkout.'
         );
         return;
       }
@@ -451,7 +451,7 @@ export function CheckoutPage() {
     } catch (err) {
       if (session && COMMERCE_DEMO_MODE) {
         setQuote(createLocalQuote(session, deliveryAddress));
-        setSubmitError('Live checkout service is unavailable. Showing a local demo quote instead.');
+        setSubmitError('Live checkout service is unavailable. Showing a local quote instead.');
       } else {
         setSubmitError(err instanceof Error ? err.message : 'Checkout failed');
       }

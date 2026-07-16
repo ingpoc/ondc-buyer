@@ -41,7 +41,7 @@ function runtimeState() {
 
 describe('HeaderStatusRail', () => {
   it.each([
-    ['no_identity', 'Unsigned'],
+    ['no_identity', 'Sign in required'],
     ['identity_present_unverified', 'unverified'],
     ['verified', 'verified'],
     ['manual_review', 'review'],

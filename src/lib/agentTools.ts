@@ -11,6 +11,7 @@ import {
   lookupBuyerCatalogByQuery,
   lookupBuyerCatalogItem,
   rememberBuyerCatalogItems,
+  waitForBuyerCatalogItems,
 } from './buyerCatalogCache';
 import { getCommerceItem, searchCommerceItems } from './commerceClient';
 import { executeBuyerCheckout } from './agentGuardCheckout';
@@ -53,6 +54,9 @@ export function catalogSearchQuery(raw: string): string {
     'need',
     'buy',
     'some',
+    'price',
+    'priced',
+    'cost',
   ]);
   const tokens = raw
     .toLowerCase()
@@ -91,6 +95,9 @@ export type BuyerToolName =
   | 'search_catalog'
   | 'navigate_to'
   | 'add_to_cart'
+  | 'clear_cart'
+  | 'remove_from_cart'
+  | 'set_cart_quantity'
   | 'checkout_commit'
   | 'remember_preference'
   | 'delegate_to_runtime_agent';
@@ -102,6 +109,11 @@ export type BuyerToolResult = {
   data?: Record<string, unknown>;
   navigateTo?: string;
   cartAdds?: Array<{ itemId: string; quantity: number; item: UCPItem }>;
+  cartChanges?: Array<{
+    action: 'clear' | 'remove' | 'set_quantity';
+    itemId?: string;
+    quantity?: number;
+  }>;
   decision?: string;
   receiptId?: string;
 };
@@ -189,7 +201,8 @@ export async function resolveBuyerAddTarget(args: {
   if (query) {
     const byQuery = lookupBuyerCatalogByQuery(query);
     if (byQuery) return byQuery;
-    return null;
+    const [settled] = await waitForBuyerCatalogItems(catalogSearchQuery(query), 8_000);
+    return settled ?? null;
   }
   // Bare add_to_cart after a settled results page — use newest cached offer.
   const recent = listBuyerCatalogItems();
@@ -200,6 +213,9 @@ const READ_TOOLS: BuyerToolName[] = [
   'search_catalog',
   'navigate_to',
   'add_to_cart',
+  'clear_cart',
+  'remove_from_cart',
+  'set_cart_quantity',
   'remember_preference',
   'delegate_to_runtime_agent',
 ];
@@ -374,6 +390,42 @@ export const BUYER_TOOL_DEFINITIONS = [
   },
   {
     type: 'function' as const,
+    name: 'clear_cart',
+    description:
+      'Empty the current Buyer cart completely and open /cart so the user sees it is empty. Use for “clear”, “empty”, or “remove everything from my cart”.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function' as const,
+    name: 'remove_from_cart',
+    description:
+      'Remove one line from the live Buyer cart and open /cart. Use item_id from Host cart context; if the cart has one line, item_id may be omitted.',
+    parameters: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'string' },
+        query: { type: 'string', description: 'Product name when item_id is not known.' },
+      },
+      required: [],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'set_cart_quantity',
+    description:
+      'Change the quantity of one live Buyer cart line and open /cart. Use item_id from Host cart context; if the cart has one line, item_id may be omitted.',
+    parameters: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'string' },
+        query: { type: 'string', description: 'Product name when item_id is not known.' },
+        quantity: { type: 'number', description: 'Desired final quantity. Zero removes the line.' },
+      },
+      required: ['quantity'],
+    },
+  },
+  {
+    type: 'function' as const,
     name: 'checkout_commit',
     description:
       'Short guarded tool: commit checkout under AgentGuard for the current cart. ' +
@@ -435,6 +487,7 @@ export async function runBuyerTool(
     /** Opaque principal for memory (preferred over wallet). */
     subjectId?: string | null;
     allowedActions?: string[] | null;
+    cartItems?: Array<{ itemId: string; name: string; quantity: number }>;
   },
 ): Promise<BuyerToolResult> {
   const subject = (ctx.subjectId || ctx.walletAddress || '').trim();
@@ -450,6 +503,17 @@ export async function runBuyerTool(
     const q = encodeURIComponent(catalogQ);
     // Always open results first so the user watches offers load (not a silent background search).
     const resultsPath = `/results?category=grocery&q=${q}`;
+    // Warm the visible/add cache before any remote readiness call. The signed
+    // network dispatch still runs below, but a slow PreProd status probe must
+    // not prevent Samantha from selecting a configured Seller offer.
+    let configuredSellerItems: UCPItem[] = [];
+    try {
+      const configuredSeller = await searchCommerceItems(catalogQ);
+      configuredSellerItems = configuredSeller.items ?? [];
+      rememberBuyerCatalogItems(configuredSellerItems);
+    } catch {
+      // Network search can still proceed without the configured Seller cache.
+    }
 
     // PreProd network lane: dispatch once + early return.
     // ResultsPage owns the visible catalog poll (shared via ondc_txn) — do NOT
@@ -494,12 +558,14 @@ export async function runBuyerTool(
     }
 
     // Demo-commerce only while network adapter off — never invent mock grocery rows.
-    let items: UCPItem[] = [];
-    try {
-      const result = await searchCommerceItems(catalogQ);
-      items = result.items ?? [];
-    } catch {
-      items = [];
+    let items = configuredSellerItems;
+    if (!items.length) {
+      try {
+        const result = await searchCommerceItems(catalogQ);
+        items = result.items ?? [];
+      } catch {
+        items = [];
+      }
     }
     rememberBuyerCatalogItems(items);
     const compact = items.slice(0, 8).map((item) => ({
@@ -514,7 +580,7 @@ export async function runBuyerTool(
       message:
         items.length > 0
           ? `Showing ${items.length} item(s) for “${catalogQ}” on the results page.`
-          : `Opened results for “${catalogQ}” — demo-commerce empty and ONDC network not enabled.`,
+          : `Opened results for “${catalogQ}”, but the ONDC network is not available.`,
       data: { items: compact, count: items.length, source: 'demo-commerce' },
       navigateTo: resultsPath,
     };
@@ -572,6 +638,67 @@ export async function runBuyerTool(
       message: `Added ${labeled.name} × ${quantity} to cart.`,
       cartAdds: [{ itemId: labeled.id, quantity, item: labeled }],
       // Make the cart change visible immediately (badge alone is easy to miss).
+      navigateTo: '/cart',
+    };
+  }
+
+  if (name === 'clear_cart') {
+    const count = ctx.cartItems?.length ?? 0;
+    return {
+      ok: true,
+      tool: name,
+      message: count ? `Cleared ${count} item${count === 1 ? '' : 's'} from your cart.` : 'Your cart is already empty.',
+      cartChanges: count ? [{ action: 'clear' }] : [],
+      navigateTo: '/cart',
+    };
+  }
+
+  if (name === 'remove_from_cart' || name === 'set_cart_quantity') {
+    const cartItems = ctx.cartItems ?? [];
+    const requested = String(args.item_id ?? args.itemId ?? args.query ?? args.name ?? '')
+      .trim()
+      .toLowerCase();
+    const match = requested
+      ? cartItems.find(
+          (item) => item.itemId.toLowerCase() === requested || item.name.toLowerCase().includes(requested),
+        )
+      : cartItems.length === 1
+        ? cartItems[0]
+        : undefined;
+    if (!match) {
+      return {
+        ok: false,
+        tool: name,
+        message: cartItems.length
+          ? 'Tell me which cart item you want to change.'
+          : 'Your cart is empty.',
+        navigateTo: '/cart',
+      };
+    }
+    if (name === 'remove_from_cart') {
+      return {
+        ok: true,
+        tool: name,
+        message: `Removed ${match.name} from your cart.`,
+        cartChanges: [{ action: 'remove', itemId: match.itemId }],
+        navigateTo: '/cart',
+      };
+    }
+    const quantity = Math.max(0, Math.round(Number(args.quantity)));
+    if (!Number.isFinite(Number(args.quantity))) {
+      return { ok: false, tool: name, message: 'Tell me the quantity you want.' };
+    }
+    return {
+      ok: true,
+      tool: name,
+      message: quantity
+        ? `Set ${match.name} to ${quantity} in your cart.`
+        : `Removed ${match.name} from your cart.`,
+      cartChanges: [
+        quantity
+          ? { action: 'set_quantity', itemId: match.itemId, quantity }
+          : { action: 'remove', itemId: match.itemId },
+      ],
       navigateTo: '/cart',
     };
   }

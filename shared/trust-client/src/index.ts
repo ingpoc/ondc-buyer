@@ -60,6 +60,7 @@ export interface SSOUser {
   principal_id?: string;
   identity_provider?: string;
   assurance_level?: string;
+  audience?: string;
   display_name?: string;
   email?: string;
   /** Legacy wallet SSO only — absent for Google/demo principals. */

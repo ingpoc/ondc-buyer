@@ -1,46 +1,20 @@
 import type { BecknItem, UCPAddress, UCPQuote, UCPSession } from '../types';
 
 const LOCAL_CART_STORAGE_KEY = 'ondc-local-cart-session';
-
-const DEMO_ITEM: BecknItem = {
-  id: 'demo-atta-5kg',
-  descriptor: {
-    name: 'Sharbati Atta 5kg',
-    short_desc: 'Demo pantry item for local checkout fallback.',
-  },
-  name: 'Sharbati Atta 5kg',
-  description: 'Whole wheat flour prepared for local buyer-flow validation.',
-  price: {
-    currency: 'INR',
-    value: '325.00',
-  },
-  images: [
-    {
-      url: 'https://images.unsplash.com/photo-1608198093002-ad4e005484ec?auto=format&fit=crop&w=800&q=80',
-    },
-  ],
-  quantity: 1,
-};
+export const LOCAL_CART_CHANGED_EVENT = 'ondc-local-cart-changed';
 
 interface StoredSessionMap {
   [sessionId: string]: UCPSession;
 }
 
-function buildDemoSession(sessionId: string): UCPSession {
+function buildEmptySession(sessionId: string): UCPSession {
   const now = new Date().toISOString();
   return {
     id: sessionId,
     status: 'active',
     createdAt: now,
     updatedAt: now,
-    items: [
-      {
-        id: `line-${DEMO_ITEM.id}`,
-        item: DEMO_ITEM,
-        quantity: 1,
-        addedAt: now,
-      },
-    ],
+    items: [],
     buyer: {
       name: '',
       email: '',
@@ -76,7 +50,7 @@ export function getLocalSession(sessionId: string): UCPSession {
     return existing;
   }
 
-  const session = buildDemoSession(sessionId);
+  const session = buildEmptySession(sessionId);
   store[sessionId] = session;
   writeStore(store);
   return session;
@@ -89,6 +63,11 @@ export function saveLocalSession(session: UCPSession): UCPSession {
     updatedAt: new Date().toISOString(),
   };
   writeStore(store);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent(LOCAL_CART_CHANGED_EVENT, { detail: { sessionId: session.id } })
+    );
+  }
   return store[session.id];
 }
 

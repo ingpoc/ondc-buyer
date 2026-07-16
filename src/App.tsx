@@ -102,7 +102,7 @@ function getTrustMeta(state: PortfolioTrustState, loading?: boolean) {
       };
     default:
       return {
-        label: 'Unsigned',
+        label: 'Sign in required',
         detail: 'Sign in before elevated buyer actions.',
         className: 'bg-secondary text-secondary-foreground',
         icon: ShieldAlert,
@@ -342,7 +342,6 @@ export function App() {
     isAuthenticated,
     loading: authLoading,
     loginAuth0,
-    loginDemo,
     loginGoogle,
     logout,
   } = useAuthContext();
@@ -350,6 +349,9 @@ export function App() {
   const trust = useTrustState(walletAddress);
   const runtime = useAgentRuntime(subjectId, walletAddress);
   const activePath = getActivePath(location.pathname);
+  const visibleNavItems = isAuthenticated
+    ? NAV_ITEMS
+    : NAV_ITEMS.filter((item) => item.href !== '/agent');
   const [activeHeaderControl, setActiveHeaderControl] = useState<HeaderControl>(null);
   const headerControlsRef = useRef<HTMLDivElement | null>(null);
 
@@ -367,6 +369,10 @@ export function App() {
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [activeHeaderControl]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
 
   const handleSearch = (query?: string) => {
     const normalized = String(query ?? '').trim();
@@ -400,7 +406,7 @@ export function App() {
                   <div className="flex flex-col gap-4 px-6 pb-6">
                     <HeaderSearch onSearch={handleSearch} expanded />
                     <div className="flex flex-col gap-2">
-                      {NAV_ITEMS.map((item) => (
+                      {visibleNavItems.map((item) => (
                         <NavigationLink
                           key={item.href}
                           href={item.href}
@@ -451,20 +457,9 @@ export function App() {
                               Continue with Google
                             </Button>
                           ) : null}
-                          {authProviders.demo_continue ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="w-full rounded-full"
-                              onClick={() => loginDemo(location.pathname)}
-                            >
-                              Continue as booth user
-                            </Button>
-                          ) : null}
                           {!authProviders.loading &&
                           !authProviders.auth0 &&
-                          !authProviders.google &&
-                          !authProviders.demo_continue ? (
+                          !authProviders.google ? (
                             <p className="text-sm text-muted-foreground">
                               Sign-in is not configured on the gateway.
                             </p>
@@ -482,13 +477,13 @@ export function App() {
                 ONDC Buyer
               </div>
               <div className="hidden text-xs text-muted-foreground sm:block">
-                Shop with Samantha under AgentGuard
+                Shop the ONDC network under AgentGuard
               </div>
             </Link>
           </div>
 
           <nav className="hidden flex-1 items-center justify-center gap-1.5 lg:flex">
-            {NAV_ITEMS.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavigationLink
                 key={item.href}
                 href={item.href}
@@ -559,17 +554,6 @@ export function App() {
                       Google
                     </Button>
                   ) : null}
-                  {authProviders.demo_continue ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="rounded-full"
-                      onClick={() => loginDemo(location.pathname)}
-                    >
-                      Booth
-                    </Button>
-                  ) : null}
                 </div>
               )
             ) : null}
@@ -583,7 +567,10 @@ export function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/results" element={<ResultsPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
-          <Route path="/agent" element={<AgentChatPage />} />
+          <Route
+            path="/agent"
+            element={isAuthenticated ? <AgentChatPage /> : <Navigate to="/search" replace />}
+          />
           <Route path="/config" element={<BuyerConfigPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
@@ -603,7 +590,7 @@ export function App() {
           ))}
         </footer>
       </main>
-      <SamanthaOrb />
+      {isAuthenticated ? <SamanthaOrb /> : null}
     </Fragment>
   );
 }

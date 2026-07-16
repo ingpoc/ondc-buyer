@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_IDENTITY_WEB_URL: string
   readonly VITE_TRUST_API_URL: string
   readonly VITE_AGENT_CONTROL_PLANE_URL?: string
+  readonly VITE_ONDC_CONTROL_PLANE_URL?: string
 
   // Backend API
   readonly VITE_BUYER_COMMERCE_URL?: string

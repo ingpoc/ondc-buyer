@@ -3,7 +3,9 @@ import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/
 import type { UCPSession, UCPSessionItem, BecknItem } from '../types';
 import {
   addLocalItem,
+  clearLocalSession,
   getLocalSession,
+  LOCAL_CART_CHANGED_EVENT,
   removeLocalItem,
   updateLocalQuantity,
 } from '../lib/localCart';
@@ -20,6 +22,7 @@ export interface UseCartResult {
   addToCart: (item: BecknItem, quantity?: number) => Promise<void>;
   removeFromCart: (itemId: string) => Promise<void>;
   updateQuantity: (itemId: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
   refreshCart: () => Promise<void>;
   clearError: () => void;
   itemCount: number;
@@ -94,6 +97,17 @@ export function useCart(): UseCartResult {
   useEffect(() => {
     refreshCart();
   }, [refreshCart]);
+
+  useEffect(() => {
+    const syncLocalCart = (event: Event) => {
+      const changedSessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (changedSessionId === sessionId) {
+        setSession(getLocalSession(sessionId));
+      }
+    };
+    window.addEventListener(LOCAL_CART_CHANGED_EVENT, syncLocalCart);
+    return () => window.removeEventListener(LOCAL_CART_CHANGED_EVENT, syncLocalCart);
+  }, [sessionId]);
 
   const addToCart = useCallback(async (item: BecknItem, quantity = 1) => {
     setLoading(true);
@@ -184,6 +198,40 @@ export function useCart(): UseCartResult {
     }
   }, [sessionId]);
 
+  const clearCart = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (USE_LOCAL_CART) {
+        setSession(clearLocalSession(sessionId));
+        return;
+      }
+      const current = session ?? (await cartRequest(buildCommerceUrl(`/api/cart?sessionId=${sessionId}`))).session;
+      await Promise.all(
+        current.items.map((entry) =>
+          cartRequest(buildCommerceUrl(`/api/cart/${entry.item.id}?sessionId=${sessionId}`), {
+            method: 'DELETE',
+          })
+        )
+      );
+      const refreshed = await cartRequest(buildCommerceUrl(`/api/cart?sessionId=${sessionId}`));
+      setSession(refreshed.session);
+    } catch (err) {
+      if (
+        shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
+        shouldFallbackLocalOnCartError(err)
+      ) {
+        setSession(clearLocalSession(sessionId));
+        setError(null);
+      } else {
+        setError(formatCartApiError(err, 'Clear cart'));
+        throw err;
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [session, sessionId]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -198,6 +246,7 @@ export function useCart(): UseCartResult {
     addToCart,
     removeFromCart,
     updateQuantity,
+    clearCart,
     refreshCart,
     clearError,
     itemCount,
