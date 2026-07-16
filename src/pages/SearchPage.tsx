@@ -24,10 +24,12 @@ export function SearchPage(): JSX.Element {
       <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
         <div className="flex flex-col gap-4">
           <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            {isAuthenticated ? 'Ask Samantha. Shop the network.' : 'Shop the ONDC network.'}
+            {isAuthenticated ? 'Ask Samantha. Shop the network.' : 'Find groceries from network sellers.'}
           </h1>
           <p className="max-w-[42ch] text-base leading-relaxed text-muted-foreground">
-            Your agent finds offers and checks out under AgentGuard limits you control.
+            {isAuthenticated
+              ? 'Samantha finds offers and follows the spending limits you choose.'
+              : 'Search sellers connected through the Open Network for Digital Commerce (ONDC).'}
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
             {isAuthenticated ? (
@@ -54,7 +56,7 @@ export function SearchPage(): JSX.Element {
           <div className="text-sm font-medium text-foreground">Checkout access</div>
           <dl className="mt-4 grid gap-3 text-sm">
             <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
-              <dt className="text-muted-foreground">Trust</dt>
+              <dt className="text-muted-foreground">Account</dt>
               <dd className="font-medium text-foreground">
                 {trust.loading ? 'Checking' : elevatedOk ? 'Ready' : 'Sign in required'}
               </dd>
@@ -62,7 +64,7 @@ export function SearchPage(): JSX.Element {
             <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
               <dt className="text-muted-foreground">Checkout</dt>
               <dd className="font-medium text-foreground">
-                {elevatedOk ? 'AgentGuard enabled' : 'Locked'}
+                {elevatedOk ? 'Protected' : 'Locked'}
               </dd>
             </div>
             {isAuthenticated ? (
@@ -91,8 +93,8 @@ export function SearchPage(): JSX.Element {
             {trust.loading
               ? 'Checking trust…'
               : elevatedOk
-                ? 'Signed in. Elevated checkout is available via AgentGuard.'
-                : 'Sign in before elevated checkout.'}
+                ? 'Signed in. Protected checkout is available.'
+                : 'Sign in to use checkout.'}
           </p>
         </div>
         <div className="rounded-2xl border border-border/60 bg-secondary/40 p-4 sm:p-5">

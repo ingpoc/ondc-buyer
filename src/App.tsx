@@ -51,7 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/search', label: 'Search' },
   { href: '/cart', label: 'Cart' },
   { href: '/orders', label: 'Orders' },
-  { href: '/config', label: 'Config' },
+  { href: '/config', label: 'Preferences' },
 ];
 
 const SECONDARY_NAV_ITEMS: NavItem[] = [
@@ -477,7 +477,7 @@ export function App() {
                 ONDC Buyer
               </div>
               <div className="hidden text-xs text-muted-foreground sm:block">
-                Shop the ONDC network under AgentGuard
+                Shop across verified network sellers
               </div>
             </Link>
           </div>

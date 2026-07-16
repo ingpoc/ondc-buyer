@@ -107,9 +107,9 @@ export function TrustNotice({
         <CardContent className="flex items-start gap-3 py-5">
           <ShieldAlert className="mt-0.5 size-4 text-muted-foreground" />
           <div className="space-y-1">
-            <div className="text-sm font-semibold">Loading trust state</div>
+            <div className="text-sm font-semibold">Checking account access</div>
             <p className="text-sm text-muted-foreground">
-              Checking session signals before enabling elevated buyer actions.
+              Checking your account before enabling checkout.
             </p>
           </div>
         </CardContent>
