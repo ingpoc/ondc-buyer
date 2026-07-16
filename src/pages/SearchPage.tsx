@@ -82,7 +82,7 @@ export function SearchPage(): JSX.Element {
           state={trust.state}
           loading={trust.loading}
           error={trust.error}
-          reason={trust.reason}
+          reason={isAuthenticated ? trust.reason : 'Sign in to use checkout.'}
         />
       ) : null}
 
@@ -91,7 +91,7 @@ export function SearchPage(): JSX.Element {
           <h2 className="text-xl font-semibold tracking-tight">Search the network</h2>
           <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
             {trust.loading
-              ? 'Checking trust…'
+              ? 'Checking account access…'
               : elevatedOk
                 ? 'Signed in. Protected checkout is available.'
                 : 'Sign in to use checkout.'}
