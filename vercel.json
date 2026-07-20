@@ -25,6 +25,14 @@
       "destination": "https://gateway.aadharcha.in/api/agent"
     },
     {
+      "source": "/api/demo-commerce/:path*",
+      "destination": "https://gateway.aadharcha.in/api/demo-commerce/:path*"
+    },
+    {
+      "source": "/api/ondc/:path*",
+      "destination": "https://gateway.aadharcha.in/api/ondc/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
