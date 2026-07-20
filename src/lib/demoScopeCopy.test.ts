@@ -19,7 +19,8 @@ describe('Buyer product copy', () => {
     expect(usecase).not.toContain('anchor a wallet-bound proof on Solana');
     expect(usecase).not.toContain('AadhaarChain verifies you once');
     expect(usecase).not.toContain('re-checked against AadhaarChain trust');
-    expect(buyerUi).toContain('AgentGuard shopping on ONDC');
+    expect(buyerUi).toContain('Find groceries on ONDC.');
+    expect(buyerUi).toContain('Ask Samantha. Shop on ONDC.');
     expect(buyerUi).not.toContain('PreProd');
     expect(buyerUi).not.toContain('Demo scope');
     expect(manifest).not.toContain('@solana/');

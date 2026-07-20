@@ -302,7 +302,8 @@ describe('buyer agent tools cart path', () => {
     localStorage.setItem('ondc-session-id', sessionId);
     const { addLocalItem, getLocalSession } = await import('./localCart');
     const { getMockBuyerItems } = await import('./mockSearch');
-    const item = getMockBuyerItems('atta')[0];
+    const item = getMockBuyerItems()[0];
+    expect(item).toBeTruthy();
     addLocalItem(sessionId, item as never, 1);
 
     const result = await runBuyerTool(
