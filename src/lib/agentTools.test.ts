@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { catalogSearchQuery, coerceBuyerNavPath, resolveBuyerCartItem, runBuyerTool } from './agentTools';
+import {
+  buildPersonalizedBuyerSearchPath,
+  catalogSearchQuery,
+  inferBuyerSearchCategory,
+  localSearchPreferenceFacts,
+  resolveCustomerSearchQuery,
+  coerceBuyerNavPath,
+  resolveBuyerCartItem,
+  runBuyerTool,
+} from './agentTools';
 import { clearBuyerCatalogCache } from './buyerCatalogCache';
 import { searchCommerceItems, getCommerceItem } from './commerceClient';
 
@@ -24,6 +33,12 @@ vi.mock('./agentGuardCheckout', () => ({
 }));
 
 vi.mock('./samanthaMemory', () => ({
+  loadSamanthaMemory: vi.fn(() => ({
+    likes: [], dislikes: [], preferences: [], notes: [], updatedAt: '2026-07-17T00:00:00Z',
+  })),
+  relevantSearchPreferences: vi.fn(() => ({
+    preferenceTerms: [], appliedLabels: [],
+  })),
   rememberSamanthaFact: vi.fn(),
 }));
 
@@ -44,6 +59,22 @@ describe('buyer agent tools cart path', () => {
     expect(result.data?.source).toBe('demo-commerce');
     expect(result.data?.count).toBe(0);
     expect(result.navigateTo).toBe('/results?category=grocery&q=apple');
+  });
+
+  it('places only derived relevant preferences in Samantha results URLs', async () => {
+    const { relevantSearchPreferences } = await import('./samanthaMemory');
+    vi.mocked(relevantSearchPreferences).mockReturnValueOnce({
+      maxPrice: 200,
+      deliveryArea: 'Pune',
+      preferenceTerms: ['unpolished'],
+      appliedLabels: ['Under INR 200', 'Deliver to Pune', 'Prefer unpolished'],
+    });
+
+    const built = buildPersonalizedBuyerSearchPath('Find toor dal', 'principal:buyer:a');
+    expect(built.path).toContain('q=toor+dal');
+    expect(built.path).toContain('max_price=200');
+    expect(built.path).toContain('delivery_area=Pune');
+    expect(built.path).toContain('preference=unpolished');
   });
 
   it('search_catalog uses demo-commerce hits when present', async () => {
@@ -75,6 +106,46 @@ describe('buyer agent tools cart path', () => {
     expect(catalogSearchQuery('AgentGuard PreProd Atta')).toBe('atta');
     expect(catalogSearchQuery('whole wheat atta price under INR 100')).toBe('atta');
     expect(catalogSearchQuery('organic toned milk')).toBe('milk');
+    expect(catalogSearchQuery('Search for toor dal')).toBe('toor dal');
+    expect(catalogSearchQuery('I need whole wheat atta for roti tonight')).toBe('atta');
+    expect(catalogSearchQuery('get me atta for roti tonight')).toBe('atta');
+    expect(catalogSearchQuery('whole-wheat atta or flour options tonight')).toBe('atta');
+    expect(catalogSearchQuery('Search for a TV')).toBe('tv');
+    expect(catalogSearchQuery('find television under 15000')).toBe('tv');
+    expect(catalogSearchQuery('show cooking oil')).toBe('oil');
+    expect(catalogSearchQuery('basmati rice')).toBe('basmati rice');
+    expect(catalogSearchQuery("I'm looking for Atta, actually.")).toBe('atta');
+    expect(catalogSearchQuery('Can you again show me somebody?')).not.toBe('somebody');
+    expect(inferBuyerSearchCategory('Search for a TV')).toBe('electronics');
+    expect(inferBuyerSearchCategory('show cooking oil')).toBe('grocery');
+    expect(buildPersonalizedBuyerSearchPath('Search for a TV').path).toContain(
+      'category=electronics',
+    );
+    expect(buildPersonalizedBuyerSearchPath('Search for a TV').path).toContain('q=tv');
+  });
+
+  it('keeps the current customer product request when the tool emits only a preference', () => {
+    expect(resolveCustomerSearchQuery('unpolished', 'Search for toor dal')).toBe(
+      'Search for toor dal',
+    );
+    expect(catalogSearchQuery(resolveCustomerSearchQuery('unpolished', 'Search for toor dal'))).toBe(
+      'toor dal',
+    );
+  });
+
+  it('does not treat a memory-only turn as the current product query', () => {
+    expect(resolveCustomerSearchQuery('toor dal', 'Remember that I like unpolished groceries')).toBe(
+      'toor dal',
+    );
+  });
+
+  it('derives only explicit safe preference facts for local text fallback', () => {
+    expect(
+      localSearchPreferenceFacts(
+        'I prefer unpolished groceries and Pune delivery. Search for toor dal.',
+      ),
+    ).toEqual(['Prefer unpolished groceries', 'Deliver to Pune']);
+    expect(localSearchPreferenceFacts('Search for toor dal; I also like jazz')).toEqual([]);
   });
 
   it('search_catalog passes keyword not full NL sentence to demo-commerce', async () => {
@@ -193,6 +264,8 @@ describe('buyer agent tools cart path', () => {
     expect(coerceBuyerNavPath('cart')).toBe('/cart');
     expect(coerceBuyerNavPath('/cart')).toBe('/cart');
     expect(coerceBuyerNavPath('config')).toBe('/config');
+    expect(coerceBuyerNavPath('agent')).toBeNull();
+    expect(coerceBuyerNavPath('/agent')).toBeNull();
   });
 
   it('clear_cart returns an explicit host mutation for every live cart line', async () => {
@@ -224,17 +297,37 @@ describe('buyer agent tools cart path', () => {
     expect(result.cartChanges).toEqual([{ action: 'remove', itemId: 'atta-1' }]);
   });
 
-  it('set_cart_quantity uses the only cart line when the user says make it two', async () => {
+  it('fill_checkout writes billing + delivery and opens checkout without committing', async () => {
+    const sessionId = 'session-fill-1';
+    localStorage.setItem('ondc-session-id', sessionId);
+    const { addLocalItem, getLocalSession } = await import('./localCart');
+    const { getMockBuyerItems } = await import('./mockSearch');
+    const item = getMockBuyerItems('atta')[0];
+    addLocalItem(sessionId, item as never, 1);
+
     const result = await runBuyerTool(
-      'set_cart_quantity',
-      { quantity: 2 },
+      'fill_checkout',
       {
-        subjectId: 'principal:demo:test',
-        cartItems: [{ itemId: 'atta-1', name: 'Whole Wheat Atta', quantity: 1 }],
+        session_id: sessionId,
+        name: 'Gurusharan Gupta',
+        email: 'buyer@example.com',
+        phone: '+919876543210',
+        line1: '42 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postal_code: '411001',
       },
+      { subjectId: 'principal:demo:test' },
     );
-    expect(result.cartChanges).toEqual([
-      { action: 'set_quantity', itemId: 'atta-1', quantity: 2 },
-    ]);
+    expect(result.ok).toBe(true);
+    expect(result.navigateTo).toBe('/checkout');
+    expect(result.message).not.toMatch(/commit|receipt/i);
+    const buyer = getLocalSession(sessionId).buyer;
+    expect(buyer?.name).toBe('Gurusharan Gupta');
+    expect(buyer?.email).toBe('buyer@example.com');
+    expect(buyer?.phone).toBe('+919876543210');
+    expect(buyer?.street).toBe('42 Market Road');
+    expect(buyer?.city).toBe('Pune');
+    expect(buyer?.pincode).toBe('411001');
   });
 });

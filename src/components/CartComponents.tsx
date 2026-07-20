@@ -23,6 +23,7 @@ export function CartItem({
   onRemove,
   disabled,
 }: CartItemProps): JSX.Element {
+  const productName = item.item.descriptor?.name || item.item.name || item.item.id;
   const handleQuantityChange = async (delta: number) => {
     const newQuantity = item.quantity + delta;
     if (newQuantity > 0) {
@@ -35,7 +36,7 @@ export function CartItem({
       <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="text-lg font-semibold tracking-tight">
-            {item.item.descriptor?.name || item.item.name || item.item.id}
+            {productName}
           </div>
           <div className="text-sm text-muted-foreground">
             {item.item.price?.currency} {item.item.price?.value || '0'} × {item.quantity}
@@ -50,10 +51,13 @@ export function CartItem({
             className="rounded-full"
             onClick={() => void handleQuantityChange(-1)}
             disabled={disabled}
+            aria-label={`Decrease quantity of ${productName}`}
           >
             <Minus className="size-4" />
           </Button>
-          <div className="min-w-9 text-center text-sm font-semibold">{item.quantity}</div>
+          <div className="min-w-9 text-center text-sm font-semibold" aria-live="polite">
+            {item.quantity}
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -61,6 +65,7 @@ export function CartItem({
             className="rounded-full"
             onClick={() => void handleQuantityChange(1)}
             disabled={disabled}
+            aria-label={`Increase quantity of ${productName}`}
           >
             <Plus className="size-4" />
           </Button>

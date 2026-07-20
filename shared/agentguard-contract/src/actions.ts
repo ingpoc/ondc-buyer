@@ -4,6 +4,7 @@ export const AGENTGUARD_ACTIONS = [
   "buyer.return.submit",
   "buyer.remedy.accept",
   "seller.catalog.publish",
+  "seller.catalog.archive",
   "seller.price.change",
   "seller.inventory.commit",
   "seller.order.accept",

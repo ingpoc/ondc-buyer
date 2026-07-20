@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PackageSearch } from 'lucide-react';
 import { useSubject } from '../hooks';
-import { COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
-import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
-import { listDemoOrders } from '../lib/localOrders';
+import { listCommerceBuyerOrders } from '../lib/commerceClient';
 import { fetchBuyerOrders } from '../lib/orderApi';
+import { customerReference } from '../lib/displayText';
 import type { UCPOrder, UCPOrderStatus } from '../types';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -59,9 +58,8 @@ export function OrdersPage() {
   const navigate = useNavigate();
   const { subjectId, authLoading } = useSubject();
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const useLocalOrders = shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE);
   const [orders, setOrders] = useState<UCPOrder[]>([]);
-  const [loading, setLoading] = useState(authLoading || !useLocalOrders);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,35 +73,37 @@ export function OrdersPage() {
       setError(null);
       return;
     }
-    if (useLocalOrders) {
-      setOrders(listDemoOrders(subjectId));
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     const sessionId = localStorage.getItem('ondc-session-id');
-    if (!sessionId) {
-      setOrders([]);
-      setLoading(false);
-      setError('No buyer session found. Add an item to the cart before checking orders.');
-      return;
-    }
-
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    void fetchBuyerOrders(sessionId)
-      .then((nextOrders) => {
+    const sources: Promise<UCPOrder[]>[] = [listCommerceBuyerOrders()];
+    if (sessionId) sources.push(fetchBuyerOrders(sessionId));
+
+    void Promise.allSettled(sources)
+      .then((results) => {
         if (!cancelled) {
-          setOrders(nextOrders);
+          const fulfilled = results.filter(
+            (result): result is PromiseFulfilledResult<UCPOrder[]> => result.status === 'fulfilled',
+          );
+          if (fulfilled.length === 0) {
+            const rejected = results.find(
+              (result): result is PromiseRejectedResult => result.status === 'rejected',
+            );
+            throw rejected?.reason ?? new Error('Server-owned order history is unavailable.');
+          }
+          const byId = new Map<string, UCPOrder>();
+          for (const result of fulfilled) {
+            for (const order of result.value) byId.set(order.id, order);
+          }
+          setOrders(Array.from(byId.values()).sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
-          setOrders(listDemoOrders(subjectId));
-          setError(null);
+          setOrders([]);
+          setError(err instanceof Error ? err.message : 'Server-owned order history is unavailable.');
         }
       })
       .finally(() => {
@@ -115,7 +115,7 @@ export function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, subjectId, useLocalOrders]);
+  }, [authLoading, subjectId]);
 
   const filteredOrders = orders.filter((order) => {
     if (filter === 'all') return true;
@@ -194,7 +194,7 @@ export function OrdersPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        Order #{order.id}
+                        Order reference {customerReference(order.id)}
                       </div>
                       <CardTitle className="text-xl">
                         {new Date(order.createdAt).toLocaleDateString('en-US', {

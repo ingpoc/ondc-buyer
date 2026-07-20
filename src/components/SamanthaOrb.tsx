@@ -3,15 +3,22 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { TRUST_API_URL } from '../lib/identityUrls';
 import {
   BUYER_TOOL_DEFINITIONS,
+  buildPersonalizedBuyerSearchPath,
   catalogSearchQuery,
   coerceBuyerNavPath,
+  localSearchPreferenceFacts,
+  resolveCustomerSearchQuery,
   resolveBuyerAddTarget,
   runBuyerTool,
   type BuyerToolName,
 } from '../lib/agentTools';
-import { listBuyerCatalogItems, waitForBuyerCatalogItems } from '../lib/buyerCatalogCache';
+import {
+  filterBuyerItemsForQuery,
+  listBuyerCatalogItems,
+  waitForBuyerCatalogItems,
+} from '../lib/buyerCatalogCache';
 import { extractRealtimeToolCalls } from '../lib/realtimeToolCalls';
-import { formatMemoryForPrompt, loadSamanthaMemory } from '../lib/samanthaMemory';
+import { formatMemoryForPrompt, loadSamanthaMemory, rememberSamanthaFact } from '../lib/samanthaMemory';
 import { subscribeBuyerRuntimeJob } from '../lib/samanthaRuntimeHandoff';
 import { createSamanthaSessionId, persistSamanthaEvent } from '../lib/samanthaTranscript';
 import { useCart, useSubject } from '../hooks';
@@ -23,37 +30,63 @@ const BUYER_ORB_INSTRUCTIONS =
   'The user must SEE the app move with their ask — never do shopping work only in the background. ' +
   'Interpret intent, then call tools immediately. Narrate briefly while tools run (e.g. “Opening results for bananas…”). ' +
   'Greetings or chitchat: reply briefly with NO tools. Do not volunteer work they did not ask for. ' +
-  'Find / search / show products: call search_catalog — it opens /results so they watch offers load. ' +
+  'If the mic audio is unclear, background noise, or not a clear request: stay quiet or ask once — do not invent product searches or tools from noise. ' +
+  'Find / search / show / need / looking for products: ALWAYS call search_catalog for that product in THIS turn — even if Host context still shows a previous query’s offers. It opens /results so they watch offers load. Stop after search; do NOT call add_to_cart for “I need X” / “find X” / “show X” phrasing. Only add_to_cart when they explicitly say add, put in cart, buy, or checkout a listed item. ' +
+  'Never name a product, price, or count from memory or a prior turn. Only describe offers returned by the latest search_catalog tool result or Host visible_results for the CURRENT query. ' +
+  'search_catalog may apply saved likes and shopping preferences only when relevant to this product; briefly name applied filters and never claim an unrelated preference was used. ' +
   'Open cart / checkout / orders / config: call navigate_to to that path so the page changes. ' +
-  'Add to cart: if Host context lists cached offers OR /results already shows offers, call add_to_cart immediately with item_id or query — never claim the catalog is empty when Host context has items, and do NOT search again. ' +
-  'Only search_catalog before add when there is no Host context and no results yet. They land on /cart with the line visible. ' +
+  'Add to cart (only after an explicit add/buy request): if Host context lists cached offers for the current query OR /results already shows those offers, call add_to_cart with item_id or query — never claim the catalog is empty when Host context has items for this query, and do NOT search again. ' +
+  'Only search_catalog before add when they asked to add and there is no Host context and no results yet. They land on /cart with the line visible. ' +
   'Cart changes: use clear_cart to empty it, remove_from_cart for one line, and set_cart_quantity to change a quantity. Never say you lack these actions. ' +
-  'Host context is authoritative for the current page, visible offers, and live cart. A search result with can_assert_empty=false means offers are still loading, not that nothing exists. ' +
-  'Checkout or pay: call checkout_commit (host fills cart total and session_id). Report AgentGuard allow / need_approval / deny honestly. ' +
+  'Host context visible_results are ONLY the current results-page query — not the whole session cache. If the user asks for a different product than current_query, you MUST call search_catalog. ' +
+  'If search_catalog reports can_assert_empty=true, count 0, or the page shows 0 matches: say honestly none were found. Do not invent SKUs or promise offers are still loading. ' +
+  'Checkout or pay (only after an explicit pay / place order / checkout / commit request): call checkout_commit (host fills cart total and session_id). Report AgentGuard allow / need_approval / deny honestly. ' +
+  'If they ask to fill details, prefill, or enter address/name/phone/email: call fill_checkout with the fields they gave (host fills session_id) and open /checkout — do NOT call checkout_commit until they explicitly ask to place/pay. ' +
   'Never ask for session ID, cart total, or amount_inr. ' +
   'Chain short tools in one turn when needed. Continue after each function_call_output until the short request is done. ' +
   'If the user asks for cart/checkout/orders while a search is running, call navigate_to and STOP — do not retry search_catalog after a timeout or navSuperseded. ' +
   'Long planning (weekly plan, budget, research): call delegate_to_runtime_agent once; say you started and will update them — never mention Cursor or /agent. ' +
-  'Never invent work. Short tools: search_catalog, navigate_to, add_to_cart, clear_cart, remove_from_cart, set_cart_quantity, remember_preference, checkout_commit.';
+  'Never invent work. Short tools: search_catalog, navigate_to, add_to_cart, clear_cart, remove_from_cart, set_cart_quantity, fill_checkout, remember_preference, checkout_commit.';
+
+function looksLikeCatalogFind(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (!/\b(find|search|show|need|want|looking\s+for|buy|get)\b/i.test(trimmed)) return false;
+  if (/^\s*(hi|hello|hey|thanks|thank you)\b/i.test(trimmed)) return false;
+  const q = catalogSearchQuery(trimmed);
+  return Boolean(q) && q !== 'grocery';
+}
 
 function buildOutboundUserText(
   userText: string,
-  host: { pathname: string; cartItems: Array<{ itemId: string; name: string; quantity: number }> },
+  host: {
+    pathname: string;
+    search?: string;
+    cartItems: Array<{ itemId: string; name: string; quantity: number }>;
+  },
 ): string {
-  const cached = listBuyerCatalogItems()
-    .slice(0, 8)
-    .map((item) => ({
-      id: item.id,
-      name: item.name || item.descriptor?.name || item.id,
-      price_inr: item.price?.value,
-    }));
+  const params = new URLSearchParams(host.search || '');
+  const currentQuery = (params.get('q') || '').trim();
+  // Scope to the live results query only — full-session cache caused Atta GHOST
+  // answers while the page still showed poha.
+  const visibleSource =
+    host.pathname.startsWith('/results') && currentQuery
+      ? filterBuyerItemsForQuery(listBuyerCatalogItems(), currentQuery)
+      : [];
+  const cached = visibleSource.slice(0, 8).map((item) => ({
+    id: item.id,
+    name: item.name || item.descriptor?.name || item.id,
+    price_inr: item.price?.value,
+  }));
   return (
     `${userText}\n\n` +
     `[Host context — authoritative app state, not typed by the user: ${JSON.stringify({
       current_page: host.pathname,
+      current_query: currentQuery || null,
       visible_results: cached,
       live_cart: host.cartItems,
     })}. ` +
+    'visible_results are only for current_query. If the user asks for a different product, call search_catalog. ' +
     'Use this state to resolve phrases such as “what I see”, “that one”, “my cart”, “remove it”, and “make it two”.]'
   );
 }
@@ -110,8 +143,8 @@ function isCommittedBuyerPath(pathname: string): boolean {
 export function SamanthaOrb() {
   const navigate = useNavigate();
   const location = useLocation();
-  const locationRef = useRef(location.pathname);
-  locationRef.current = location.pathname;
+  const locationRef = useRef({ pathname: location.pathname, search: location.search });
+  locationRef.current = { pathname: location.pathname, search: location.search };
   const { subjectId, walletAddress } = useSubject();
   const { addToCart, clearCart, removeFromCart, updateQuantity, session, subtotal, refreshCart } = useCart();
   const [open, setOpen] = useState(false);
@@ -136,12 +169,27 @@ export function SamanthaOrb() {
   const turnMutationKeysRef = useRef(new Set<string>());
   /** Queued while connecting — flushed when Realtime is listening. */
   const pendingTextRef = useRef<string | null>(null);
+  const pendingFallbackTimerRef = useRef<number | null>(null);
+  /** Current customer turn, used to keep the product noun authoritative over a saved qualifier. */
+  const latestUserTextRef = useRef<string | null>(null);
+  /** Survives tool arg resolution so we can force search_catalog when the model skips it. */
+  const lastUserAskRef = useRef<string | null>(null);
+  const forcedSearchForAskRef = useRef<string | null>(null);
   /** Bumped when a non-search tool moves the UI — stale search navigateTo must not yank back. */
   const navEpochRef = useRef(0);
   // Realtime dc.onmessage closes over wire-time handlers; always call latest.
   const handleToolCallRef = useRef<
     (name: string, callId: string, argsJson: string) => Promise<void>
   >(async () => undefined);
+
+  useEffect(() => {
+    const openFromHero = () => {
+      setOpen(true);
+      void startSession();
+    };
+    window.addEventListener('samantha:open', openFromHero);
+    return () => window.removeEventListener('samantha:open', openFromHero);
+  }, []);
 
   useEffect(() => {
     return subscribeBuyerRuntimeJob((update) => {
@@ -228,6 +276,7 @@ export function SamanthaOrb() {
   useEffect(() => {
     void probeRealtimeConfigured();
     return () => {
+      pendingTextRef.current = null;
       stopSession();
     };
   }, []);
@@ -243,6 +292,14 @@ export function SamanthaOrb() {
         args = JSON.parse(argsJson || '{}') as Record<string, unknown>;
       } catch {
         args = {};
+      }
+      if (name === 'search_catalog') {
+        args.query = resolveCustomerSearchQuery(
+          String(args.query ?? ''),
+          latestUserTextRef.current || lastUserAskRef.current,
+        );
+        // Keep lastUserAskRef until response.done so a skipped-tool guard can still fire.
+        latestUserTextRef.current = null;
       }
       void persistSamanthaEvent({
         role: 'buyer',
@@ -261,7 +318,7 @@ export function SamanthaOrb() {
           }
         }
       }
-      if (name === 'checkout_commit') {
+      if (name === 'checkout_commit' || name === 'fill_checkout') {
         try {
           await refreshCart();
         } catch {
@@ -273,20 +330,22 @@ export function SamanthaOrb() {
             typeof localStorage !== 'undefined' ? localStorage.getItem('ondc-session-id') : null;
           args.session_id = fromSession || fromStorage || `session-${Date.now()}`;
         }
-        if (args.amount_inr == null || Number(args.amount_inr) <= 0) {
-          const total = Number(subtotal) || 0;
-          if (total > 0) {
-            args.amount_inr = Math.round(total);
+        if (name === 'checkout_commit') {
+          if (args.amount_inr == null || Number(args.amount_inr) <= 0) {
+            const total = Number(subtotal) || 0;
+            if (total > 0) {
+              args.amount_inr = Math.round(total);
+            }
           }
-        }
-        if (!args.item_id && session?.items?.length) {
-          const first = session.items[0];
-          const firstId = first.item?.id;
-          if (firstId) {
-            args.item_id = firstId;
-          }
-          if (args.quantity == null) {
-            args.quantity = first.quantity ?? 1;
+          if (!args.item_id && session?.items?.length) {
+            const first = session.items[0];
+            const firstId = first.item?.id;
+            if (firstId) {
+              args.item_id = firstId;
+            }
+            if (args.quantity == null) {
+              args.quantity = first.quantity ?? 1;
+            }
           }
         }
       }
@@ -295,13 +354,17 @@ export function SamanthaOrb() {
       const navEpochAtStart = navEpochRef.current;
       if (name === 'search_catalog') {
         const q = catalogSearchQuery(String(args.query ?? '')) || 'grocery';
+        const personalizedPath = buildPersonalizedBuyerSearchPath(
+          String(args.query ?? ''),
+          subjectId,
+        ).path;
         // Do not yank off cart/checkout/orders/config — navigate_to/add already won.
         // Intentional search from those pages still lands via result.navigateTo when not superseded.
-        if (!isCommittedBuyerPath(locationRef.current)) {
-          navigate(`/results?category=grocery&q=${encodeURIComponent(q)}`);
+        if (!isCommittedBuyerPath(locationRef.current.pathname)) {
+          navigate(personalizedPath);
           setHint(`Searching for “${q}” — watch the results page…`);
         } else {
-          setHint(`Searching for “${q}” — keeping you on ${locationRef.current}…`);
+          setHint(`Searching for “${q}” — keeping you on ${locationRef.current.pathname}…`);
         }
         setOpen(true);
       } else if (name === 'navigate_to') {
@@ -312,6 +375,11 @@ export function SamanthaOrb() {
           setHint(`Opening ${path}…`);
           setOpen(true);
         }
+      } else if (name === 'fill_checkout') {
+        navEpochRef.current += 1;
+        navigate('/checkout');
+        setHint('Filling checkout details…');
+        setOpen(true);
       }
 
       const result = await Promise.race([
@@ -342,7 +410,7 @@ export function SamanthaOrb() {
                 : undefined,
               navigateTo:
                 isSearch && !superseded
-                  ? `/results?category=grocery&q=${encodeURIComponent(stableQuery)}`
+                  ? buildPersonalizedBuyerSearchPath(stableQuery, subjectId).path
                   : undefined,
             });
           }, 12_000);
@@ -389,17 +457,34 @@ export function SamanthaOrb() {
       // Navigate after cart mutations so the destination page shows updated state.
       // Do not let a finishing search_catalog yank the user back off cart/checkout/etc.
       if (result.navigateTo && !navSuperseded) {
-        if (name !== 'search_catalog') {
+        if (name === 'search_catalog') {
+          // Early nav already opened /results?q=… — a second navigate that only
+          // appends ondc_txn remounts ResultsPage (loading flash → reload).
+          const next = new URL(result.navigateTo, window.location.origin);
+          const curQ = new URLSearchParams(locationRef.current.search).get('q');
+          const curCat = new URLSearchParams(locationRef.current.search).get('category') || 'grocery';
+          const nextQ = next.searchParams.get('q');
+          const nextCat = next.searchParams.get('category') || 'grocery';
+          const alreadyOnSameResults =
+            locationRef.current.pathname.startsWith('/results') &&
+            curQ === nextQ &&
+            curCat === nextCat;
+          const demoAlreadyPainted =
+            result.data?.source === 'demo-commerce' ||
+            (Number(result.data?.demo_count ?? 0) > 0 && result.data?.loading !== true);
+          if (!(alreadyOnSameResults && (demoAlreadyPainted || !next.searchParams.get('ondc_txn')))) {
+            navigate(result.navigateTo);
+          }
+        } else {
           navEpochRef.current += 1;
+          navigate(result.navigateTo);
         }
-        navigate(result.navigateTo);
       }
       if (
         name === 'search_catalog' &&
         result.ok &&
         !navSuperseded &&
-        result.data?.loading === true &&
-        Number(result.data?.count ?? 0) === 0
+        result.data?.loading === true
       ) {
         const stableQuery = catalogSearchQuery(String(args.query ?? ''));
         const visible = await waitForBuyerCatalogItems(stableQuery, 12_000);
@@ -413,12 +498,19 @@ export function SamanthaOrb() {
           resultData = { ...result.data, items, count: items.length, loading: false, result_state: 'visible' };
           hostMessage = `Showing ${items.length} offer${items.length === 1 ? '' : 's'} for “${stableQuery}” on the results page.`;
         } else {
+          // After the wait window, empty means empty — do not keep can_assert_empty
+          // false (that made Samantha promise bananas forever).
           resultData = {
             ...result.data,
-            result_state: 'loading',
-            can_assert_empty: false,
+            items: [],
+            count: 0,
+            loading: false,
+            result_state: 'empty',
+            can_assert_empty: true,
           };
-          hostMessage = `Opened results for “${stableQuery}”. Offers are still loading.`;
+          hostMessage =
+            `No offers found for “${stableQuery}” on the results page. ` +
+            'Tell the user honestly none matched — do not invent products or say they are still loading.';
         }
         setHint(hostMessage);
       }
@@ -432,6 +524,11 @@ export function SamanthaOrb() {
           at: Date.now(),
           name,
           callId,
+          args: {
+            query: args.query ?? null,
+            item_id: args.item_id ?? null,
+            path: args.path ?? args.page ?? args.destination ?? null,
+          },
           ok: result.ok,
           message: hostMessage,
           decision: result.decision ?? null,
@@ -462,7 +559,7 @@ export function SamanthaOrb() {
           navigate_to: navSuperseded ? null : result.navigateTo,
         },
       }).catch(() => undefined);
-      if (name === 'checkout_commit') {
+      if (name === 'checkout_commit' || name === 'fill_checkout') {
         try {
           await refreshCart();
         } catch {
@@ -470,6 +567,14 @@ export function SamanthaOrb() {
         }
       }
       const dc = dcRef.current;
+      // Host-forced searches (model skipped the tool) must not emit a fake
+      // function_call_output — Realtime rejects unknown call_ids.
+      if (callId.startsWith('forced-')) {
+        setReply(hostMessage.slice(0, 500));
+        replyBufRef.current = hostMessage.slice(0, 500);
+        markSamanthaTurn(false, 'forced_search_done');
+        return;
+      }
       if (!dc || dc.readyState !== 'open') return;
       dc.send(
         JSON.stringify({
@@ -512,6 +617,10 @@ export function SamanthaOrb() {
   handleToolCallRef.current = handleToolCall;
 
   function stopSession() {
+    if (!pendingTextRef.current && pendingFallbackTimerRef.current) {
+      window.clearTimeout(pendingFallbackTimerRef.current);
+      pendingFallbackTimerRef.current = null;
+    }
     const pc = pcRef.current;
     pcRef.current = null;
     dcRef.current = null;
@@ -560,7 +669,19 @@ export function SamanthaOrb() {
         instructions: BUYER_ORB_INSTRUCTIONS,
         audio: {
           input: {
-            turn_detection: usedMic ? { type: 'semantic_vad' } : null,
+            // server_vad + higher threshold: room noise was firing ghost turns
+            // under default semantic_vad. far_field NR for laptop/desktop mics.
+            turn_detection: usedMic
+              ? {
+                  type: 'server_vad',
+                  threshold: 0.82,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 700,
+                  create_response: true,
+                  interrupt_response: true,
+                }
+              : null,
+            noise_reduction: usedMic ? { type: 'far_field' } : null,
             transcription: usedMic ? { model: 'gpt-4o-mini-transcribe' } : null,
           },
         },
@@ -611,6 +732,9 @@ export function SamanthaOrb() {
             toolFollowupSentRef.current = false;
             markSamanthaTurn(true, 'user_text');
             turnMutationKeysRef.current.clear();
+            latestUserTextRef.current = pending;
+            lastUserAskRef.current = pending;
+            forcedSearchForAskRef.current = null;
             void persistSamanthaEvent({
               role: 'buyer', sessionId: transcriptSessionIdRef.current,
               eventType: 'user_text', content: pending,
@@ -628,7 +752,8 @@ export function SamanthaOrb() {
                     {
                       type: 'input_text',
                       text: buildOutboundUserText(pending, {
-                        pathname: locationRef.current,
+                        pathname: locationRef.current.pathname,
+                        search: locationRef.current.search,
                         cartItems: (session?.items ?? []).map((entry) => ({
                           itemId: entry.item.id,
                           name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
@@ -659,6 +784,9 @@ export function SamanthaOrb() {
         if (msg.type === 'conversation.item.input_audio_transcription.completed') {
           const transcript = String(msg.transcript || msg.text || '').trim();
           if (transcript) {
+            latestUserTextRef.current = transcript;
+            lastUserAskRef.current = transcript;
+            forcedSearchForAskRef.current = null;
             turnMutationKeysRef.current.clear();
             void persistSamanthaEvent({
               role: 'buyer', sessionId: transcriptSessionIdRef.current,
@@ -670,9 +798,11 @@ export function SamanthaOrb() {
           responseActiveRef.current = true;
           toolFollowupRequestedRef.current = false;
           toolFollowupSentRef.current = false;
-          if (replyBufRef.current && !/\s$/.test(replyBufRef.current)) {
-            replyBufRef.current += ' ';
-          }
+          // Each model response is a fresh user-facing reply — do not concatenate
+          // prior turns (that made Atta answers still talk about rice/poha).
+          replyBufRef.current = '';
+          lastPersistedReplyRef.current = '';
+          setReply('');
         }
         if (
           msg.type === 'response.output_audio_transcript.delta' ||
@@ -691,6 +821,31 @@ export function SamanthaOrb() {
             markSamanthaTurn(true, 'tool_followup');
           } else {
             markSamanthaTurn(false, 'response_done');
+            // Model sometimes answers a find-ask from stale memory without tools
+            // (Atta claimed while URL still q=poha). Force a real search_catalog.
+            const ask = (lastUserAskRef.current || '').trim();
+            if (
+              turnToolCallCountRef.current === 0 &&
+              ask &&
+              looksLikeCatalogFind(ask) &&
+              forcedSearchForAskRef.current !== ask
+            ) {
+              forcedSearchForAskRef.current = ask;
+              const q = catalogSearchQuery(ask);
+              setHint(`Searching for “${q}” — watch the results page…`);
+              void (async () => {
+                try {
+                  const forcedArgs = JSON.stringify({ query: ask });
+                  await handleToolCallRef.current(
+                    'search_catalog',
+                    `forced-${Date.now()}`,
+                    forcedArgs,
+                  );
+                } catch {
+                  /* best-effort */
+                }
+              })();
+            }
           }
           // Do not clobber tool result hints (e.g. "Found 1 item…").
           if (replyBufRef.current.trim() && turnToolCallCountRef.current === 0) {
@@ -789,7 +944,14 @@ export function SamanthaOrb() {
 
     let usedMic = false;
     try {
-      const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ms = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          // AGC amplifies room hum into false speech starts — keep off.
+          autoGainControl: false,
+        },
+      });
       if (!stillActive()) {
         ms.getTracks().forEach((t) => t.stop());
         return;
@@ -846,10 +1008,30 @@ export function SamanthaOrb() {
     event?.preventDefault();
     const text = draft.trim();
     if (!text) return;
+    latestUserTextRef.current = text;
     const dc = dcRef.current;
     if (!dc || dc.readyState !== 'open' || state !== 'listening') {
       pendingTextRef.current = text;
       setHint('Connecting… I’ll send that as soon as Samantha is ready');
+      if (pendingFallbackTimerRef.current) window.clearTimeout(pendingFallbackTimerRef.current);
+      pendingFallbackTimerRef.current = window.setTimeout(() => {
+        pendingFallbackTimerRef.current = null;
+        const stillPending = pendingTextRef.current === text;
+        const channel = dcRef.current;
+        if (!stillPending || (channel && channel.readyState === 'open')) return;
+        const hasSearchIntent = /\b(?:find|search|show|buy|get|need|want|looking\s+for)\b/i.test(text);
+        if (!hasSearchIntent) return;
+        for (const fact of localSearchPreferenceFacts(text)) {
+          rememberSamanthaFact(subjectId, 'preference', fact);
+        }
+        const destination = buildPersonalizedBuyerSearchPath(text, subjectId).path;
+        pendingTextRef.current = null;
+        latestUserTextRef.current = null;
+        navigate(destination);
+        setReply('I saved the relevant shopping preferences and opened matching results.');
+        setHint('Showing matching offers while voice reconnects');
+        setOpen(true);
+      }, 8_000);
       if (state === 'idle' || state === 'error') {
         void startSession();
       }
@@ -861,12 +1043,19 @@ export function SamanthaOrb() {
     toolFollowupSentRef.current = false;
     markSamanthaTurn(true, 'user_text');
     turnMutationKeysRef.current.clear();
+    latestUserTextRef.current = text;
+    lastUserAskRef.current = text;
+    forcedSearchForAskRef.current = null;
     void persistSamanthaEvent({
       role: 'buyer', sessionId: transcriptSessionIdRef.current,
       eventType: 'user_text', content: text,
     }).catch(() => undefined);
     setReply('');
     pendingTextRef.current = null;
+    if (pendingFallbackTimerRef.current) {
+      window.clearTimeout(pendingFallbackTimerRef.current);
+      pendingFallbackTimerRef.current = null;
+    }
     dc.send(
       JSON.stringify({
         type: 'conversation.item.create',
@@ -877,7 +1066,8 @@ export function SamanthaOrb() {
             {
               type: 'input_text',
               text: buildOutboundUserText(text, {
-                pathname: locationRef.current,
+                pathname: locationRef.current.pathname,
+                search: locationRef.current.search,
                 cartItems: (session?.items ?? []).map((entry) => ({
                   itemId: entry.item.id,
                   name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
@@ -921,8 +1111,21 @@ export function SamanthaOrb() {
           className="pointer-events-auto w-[340px] max-w-[calc(100vw-2.5rem)] rounded-2xl border border-border/70 bg-card/95 px-4 py-3 text-sm shadow-[var(--surface-lift)] backdrop-blur-xl"
           data-testid="samantha-orb-panel"
         >
-          <p className="text-base font-semibold tracking-tight text-foreground">Samantha</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{hint}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-semibold tracking-tight text-foreground">Samantha</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{hint}</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Close Samantha"
+              data-testid="samantha-orb-close"
+              onClick={toggle}
+              className="shrink-0 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            >
+              Close
+            </button>
+          </div>
           {reply ? (
             <div
               className="mt-2 max-h-40 whitespace-pre-wrap overflow-y-auto border-t border-border/50 pt-2 text-xs leading-relaxed text-foreground"
@@ -958,24 +1161,25 @@ export function SamanthaOrb() {
             Preferences and AgentGuard
           </button>
         </div>
-      ) : null}
-      <button
-        type="button"
-        aria-label={state === 'listening' ? 'Stop Samantha' : 'Open Samantha'}
-        data-testid="samantha-orb"
-        onClick={toggle}
-        className={cn(
-          'pointer-events-auto flex h-12 items-center justify-center rounded-full px-4 text-sm font-semibold transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          state === 'listening' &&
-            'bg-primary text-primary-foreground shadow-[0_8px_24px_oklch(0.48_0.07_195_/_0.35)] ring-2 ring-primary/30',
-          state === 'connecting' && 'bg-secondary text-foreground ring-2 ring-border',
-          state === 'error' && 'bg-destructive/10 text-destructive ring-2 ring-destructive/30',
-          state === 'idle' &&
-            'bg-primary text-primary-foreground shadow-[0_8px_24px_oklch(0.48_0.07_195_/_0.28)] hover:scale-105 active:scale-[0.98]'
-        )}
-      >
-        Samantha
-      </button>
+      ) : (
+        <button
+          type="button"
+          aria-label={state === 'listening' ? 'Stop Samantha' : 'Open Samantha'}
+          data-testid="samantha-orb"
+          onClick={toggle}
+          className={cn(
+            'pointer-events-auto flex h-12 items-center justify-center rounded-full px-4 text-sm font-semibold transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+            state === 'listening' &&
+              'bg-primary text-primary-foreground shadow-[0_8px_24px_oklch(0.48_0.07_195_/_0.35)] ring-2 ring-primary/30',
+            state === 'connecting' && 'bg-secondary text-foreground ring-2 ring-border',
+            state === 'error' && 'bg-destructive/10 text-destructive ring-2 ring-destructive/30',
+            state === 'idle' &&
+              'bg-primary text-primary-foreground shadow-[0_8px_24px_oklch(0.48_0.07_195_/_0.28)] hover:scale-105 active:scale-[0.98]'
+          )}
+        >
+          Samantha
+        </button>
+      )}
     </div>
   );
 }

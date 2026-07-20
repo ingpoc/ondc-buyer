@@ -1,0 +1,51 @@
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { UCPItem } from '../types';
+import { rememberBuyerCatalogItems } from '../lib/buyerCatalogCache';
+import * as commerceClient from '../lib/commerceClient';
+import * as protocolClient from '../lib/ondc/protocolClient';
+import { useApi } from './useApi';
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('useApi product detail', () => {
+  it('resolves a product from the search-result cache without a second gateway route', async () => {
+    const item: UCPItem = {
+      id: 'cached-atta-item',
+      name: 'Cached Atta',
+      descriptor: { name: 'Cached Atta' },
+      price: { currency: 'INR', value: '89.00' },
+      images: [],
+    };
+    rememberBuyerCatalogItems([item]);
+
+    const { result } = renderHook(() => useApi<UCPItem>('/api/catalog/products/cached-atta-item'));
+    await act(async () => {
+      await result.current.execute();
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.data).toEqual(item);
+  });
+});
+
+describe('useApi local search dependency boundary', () => {
+  it('returns the local shared catalog without waiting for external network search', async () => {
+    const networkReady = vi.spyOn(protocolClient, 'isOndcNetworkSearchReady').mockResolvedValue(true);
+    const localSearch = vi.spyOn(commerceClient, 'searchCommerceItems').mockResolvedValue({
+      items: [],
+      totalCount: 0,
+      __source: 'api',
+    });
+
+    const { result } = renderHook(() => useApi<{ items: UCPItem[]; totalCount: number }>('/api/search?category=grocery&q=rice'));
+    await act(async () => {
+      await result.current.execute();
+    });
+
+    expect(networkReady).not.toHaveBeenCalled();
+    expect(localSearch).toHaveBeenCalledWith('rice');
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.items).toEqual([]);
+  });
+});

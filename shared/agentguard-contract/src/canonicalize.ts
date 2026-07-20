@@ -20,14 +20,13 @@ export function canonicalize(value: unknown): string {
 export async function sha256Hex(value: string): Promise<string> {
   const data = new TextEncoder().encode(value);
   const subtle = globalThis.crypto?.subtle;
-  if (subtle) {
-    const digestInput = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-    const digest = await subtle.digest("SHA-256", digestInput);
-    return Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+  if (!subtle) {
+    throw new Error("Web Crypto SubtleCrypto is required to hash AgentGuard requests");
   }
 
-  const { createHash } = await import("node:crypto");
-  return createHash("sha256").update(value).digest("hex");
+  const digestInput = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const digest = await subtle.digest("SHA-256", digestInput);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }

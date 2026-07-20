@@ -1,5 +1,5 @@
 /**
- * Shared Buyer agent POST + SSE consume — used by AgentChatPage and Samantha background handoff.
+ * Shared Buyer agent POST + SSE consume for Samantha background handoff.
  */
 import { buildAgentControlPlaneUrl } from './agentControlPlane';
 

@@ -6,7 +6,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { SSOUser } from '@/lib/api';
-import { IDENTITY_URL } from '@/lib/identityUrls';
+import { authFetchBase } from '@/lib/identityUrls';
 import { syncBuyerPrincipalSession } from '@/lib/principalStorage';
 
 const LOCAL_IDENTITY_AUTH_ENABLED = import.meta.env.VITE_IDENTITY_AUTH_ENABLED === 'true';
@@ -39,36 +39,38 @@ function returnAbsolute(returnUrl = '/'): string {
   return `${window.location.origin}${returnUrl.startsWith('/') ? returnUrl : `/${returnUrl}`}`;
 }
 
+function authUrl(path: string): string {
+  const base = authFetchBase();
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SSOUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (import.meta.env.DEV && !LOCAL_IDENTITY_AUTH_ENABLED) {
-      setUser(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    void validateSession();
-  }, []);
 
   const validateSession = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${IDENTITY_URL}/api/auth/me`, {
+      const response = await fetch(authUrl('/api/auth/me'), {
         credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
         const nextUser = data.data as SSOUser | null;
-        if (!nextUser || !matchesAudience(nextUser)) {
+        if (!nextUser) {
           syncBuyerPrincipalSession(null);
           setUser(null);
+          return;
+        }
+        if (!matchesAudience(nextUser)) {
+          // One cookie carries one app audience; Seller session must not look signed-in here.
+          syncBuyerPrincipalSession(null);
+          setUser(null);
+          setError('Signed in for a different app. Sign in again for Buyer.');
           return;
         }
         const nextPrincipal = nextUser.principal_id || nextUser.wallet_address || null;
@@ -87,19 +89,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    if (import.meta.env.DEV && !LOCAL_IDENTITY_AUTH_ENABLED) {
+      setUser(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    void validateSession();
+
+    // Re-check after Auth0 return (including bfcache restore).
+    const onShow = (event: PageTransitionEvent) => {
+      if (event.persisted) void validateSession();
+      else void validateSession();
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+
   const loginAuth0 = (returnUrl = '/') => {
     const encoded = encodeURIComponent(returnAbsolute(returnUrl));
-    window.location.href = `${IDENTITY_URL}/api/auth/auth0/start?aud=${AUDIENCE}&return=${encoded}`;
+    window.location.href = authUrl(`/api/auth/auth0/start?aud=${AUDIENCE}&return=${encoded}`);
   };
 
   const loginDemo = (returnUrl = '/') => {
     const encoded = encodeURIComponent(returnAbsolute(returnUrl));
-    window.location.href = `${IDENTITY_URL}/api/auth/demo-continue?aud=${AUDIENCE}&return=${encoded}`;
+    window.location.href = authUrl(`/api/auth/demo-continue?aud=${AUDIENCE}&return=${encoded}`);
   };
 
   const loginGoogle = (returnUrl = '/') => {
     const encoded = encodeURIComponent(returnAbsolute(returnUrl));
-    window.location.href = `${IDENTITY_URL}/api/auth/google/start?aud=${AUDIENCE}&return=${encoded}`;
+    window.location.href = authUrl(`/api/auth/google/start?aud=${AUDIENCE}&return=${encoded}`);
   };
 
   const login = (returnUrl = '/') => {
@@ -108,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch(`${IDENTITY_URL}/api/auth/logout`, {
+      await fetch(authUrl('/api/auth/logout'), {
         method: 'POST',
         credentials: 'include',
       });

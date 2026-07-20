@@ -8,7 +8,10 @@
   VITE_IDENTITY_WEB_URL = "https://aadharcha.in"
   VITE_TRUST_API_URL = "https://identity-aadhar-gateway.onrender.com"
   TRUST_API_URL = "https://identity-aadhar-gateway.onrender.com"
-  BUYER_COMMERCE_API_URL = "https://buyer-app-preprod-v2.ondc.org"
+BUYER_COMMERCE_API_URL = "https://buyer-app-preprod-v2.ondc.org"
+
+# Legacy Netlify-only protected redirects. Current Render/Vercel paths use the
+# gateway AgentGuard executor. Delete with protected-buyer-action after 2026-08-01.
 
 [[redirects]]
   from = "/api/checkout"

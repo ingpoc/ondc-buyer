@@ -11,6 +11,14 @@ export type SamanthaMemory = {
   updatedAt: string;
 };
 
+export interface RelevantSearchPreferences {
+  maxPrice?: number;
+  minRating?: number;
+  deliveryArea?: string;
+  preferenceTerms: string[];
+  appliedLabels: string[];
+}
+
 const MAX_ITEMS = 8;
 
 function storageKey(principalId: string | null | undefined): string {
@@ -113,4 +121,85 @@ export function memoryIsEmpty(memory: SamanthaMemory): boolean {
     memory.preferences.length === 0 &&
     memory.notes.length === 0
   );
+}
+
+const SEARCH_PREFERENCE_TERMS = [
+  'organic',
+  'unpolished',
+  'whole wheat',
+  'gluten free',
+  'gluten-free',
+  'sugar free',
+  'sugar-free',
+  'low sugar',
+  'low sodium',
+  'vegan',
+  'local',
+  'fresh',
+] as const;
+
+function productTokens(query: string): string[] {
+  const stop = new Set(['find', 'search', 'show', 'buy', 'some', 'please', 'under', 'below']);
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !stop.has(token));
+}
+
+export function relevantSearchPreferences(
+  memory: SamanthaMemory,
+  query: string,
+): RelevantSearchPreferences {
+  const tokens = productTokens(query);
+  const facts = [...memory.likes, ...memory.preferences].map((fact) => fact.trim()).filter(Boolean);
+  const result: RelevantSearchPreferences = { preferenceTerms: [], appliedLabels: [] };
+
+  for (const fact of facts) {
+    const lower = fact.toLowerCase();
+    const globalFilter = /(?:under|below|up to|max(?:imum)?|rating|deliver(?:y)?\s+(?:to|in))/.test(lower);
+    const productRelevant = tokens.some((token) => lower.includes(token));
+    const hasPreferenceTerm = SEARCH_PREFERENCE_TERMS.some((term) => lower.includes(term));
+    const categoryRelevant =
+      hasPreferenceTerm && /\b(?:grocer(?:y|ies)|food|products?|items?)\b/.test(lower);
+    const preferenceRelevant = productRelevant || categoryRelevant;
+    if (!globalFilter && !preferenceRelevant) continue;
+
+    const priceMatch = lower.match(
+      /(?:under|below|up to|max(?:imum)?(?:\s+price)?)\s*(?:inr|rs\.?|₹)?\s*(\d+(?:\.\d+)?)/,
+    );
+    if (priceMatch) {
+      const value = Number(priceMatch[1]);
+      if (Number.isFinite(value) && value >= 0) {
+        result.maxPrice = result.maxPrice === undefined ? value : Math.min(result.maxPrice, value);
+      }
+    }
+
+    const ratingMatch = lower.match(
+      /(?:rating(?:\s+of)?\s*)?(\d(?:\.\d)?)\s*(?:\+|or\s+(?:better|higher)|and\s+above)?\s*(?:star|rating)/,
+    );
+    if (ratingMatch) {
+      const value = Number(ratingMatch[1]);
+      if (value >= 0 && value <= 5) {
+        result.minRating = result.minRating === undefined ? value : Math.max(result.minRating, value);
+      }
+    }
+
+    const deliveryMatch = fact.match(/deliver(?:y)?\s+(?:to|in)\s+(.+?)(?:\s+for\s+|[.;]|$)/i);
+    if (deliveryMatch?.[1]?.trim()) result.deliveryArea = deliveryMatch[1].trim();
+
+    if (preferenceRelevant) {
+      for (const term of SEARCH_PREFERENCE_TERMS) {
+        if (lower.includes(term) && !result.preferenceTerms.includes(term)) {
+          result.preferenceTerms.push(term);
+        }
+      }
+    }
+  }
+
+  if (result.maxPrice !== undefined) result.appliedLabels.push(`Under INR ${result.maxPrice}`);
+  if (result.minRating !== undefined) result.appliedLabels.push(`${result.minRating}+ rating`);
+  if (result.deliveryArea) result.appliedLabels.push(`Deliver to ${result.deliveryArea}`);
+  result.appliedLabels.push(...result.preferenceTerms.map((term) => `Prefer ${term}`));
+  return result;
 }

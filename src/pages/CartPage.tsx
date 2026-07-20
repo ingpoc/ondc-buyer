@@ -3,7 +3,7 @@ import { ShoppingBag } from 'lucide-react';
 import { useCart, useSubject, useTrustState } from '../hooks';
 import { CartItem, CartSummary } from '../components/CartComponents';
 import { TrustNotice } from '../components/TrustStatus';
-import { elevatedTrustSatisfied } from '../lib/trust';
+import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
@@ -60,20 +60,23 @@ export function CartPage(): JSX.Element {
 
   if (!session || itemCount === 0) {
     return (
-      <Empty className="border-border/70 bg-card/90">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <ShoppingBag className="size-5" />
-          </EmptyMedia>
-          <EmptyTitle>Your cart is empty</EmptyTitle>
-          <EmptyDescription>
-            Add some items to get started with the buyer checkout flow.
-          </EmptyDescription>
-        </EmptyHeader>
-        <Button type="button" className="rounded-full" onClick={() => navigate('/search')}>
-          Start shopping
-        </Button>
-      </Empty>
+      <div className="space-y-6">
+        <h1 className="sr-only">Shopping cart</h1>
+        <Empty className="border-border/70 bg-card/90">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ShoppingBag className="size-5" />
+            </EmptyMedia>
+            <EmptyTitle>Your cart is empty</EmptyTitle>
+            <EmptyDescription>
+              Add an offer to compare its seller, delivery, return terms, and final checkout total.
+            </EmptyDescription>
+          </EmptyHeader>
+          <Button type="button" className="rounded-full" onClick={() => navigate('/search')}>
+            Start shopping
+          </Button>
+        </Empty>
+      </div>
     );
   }
 
@@ -91,7 +94,7 @@ export function CartPage(): JSX.Element {
 
       {!elevatedOk && !trust.loading ? (
         <TrustNotice
-          state={trust.state}
+          state={effectiveElevatedTrustState(trust.state, principalId)}
           loading={trust.loading}
           error={trust.error}
           reason={trust.reason}

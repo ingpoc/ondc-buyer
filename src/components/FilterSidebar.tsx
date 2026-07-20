@@ -22,6 +22,7 @@ export interface SearchFilters {
   minRating?: number;
   sortBy?: string;
   location?: string;
+  preferenceTerms?: string[];
 }
 
 export interface FilterSidebarProps {
@@ -35,6 +36,7 @@ function activeFilterCount(filters: SearchFilters) {
     filters.minRating !== undefined,
     Boolean(filters.location),
     Boolean(filters.sortBy && filters.sortBy !== 'relevance'),
+    Boolean(filters.preferenceTerms?.length),
   ].filter(Boolean).length;
 }
 
@@ -136,7 +138,38 @@ export function FilterSidebar({ filters, onChange }: FilterSidebarProps): JSX.El
             onChange={(event) => handleChange('location', event.target.value || undefined)}
             placeholder="City or PIN code"
           />
+          <span className="block text-xs text-muted-foreground">
+            Filled from your saved checkout area when available. You can edit it.
+          </span>
         </label>
+
+        {filters.preferenceTerms?.length ? (
+          <div className="space-y-2" aria-label="Samantha applied preferences">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Samantha applied
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {filters.preferenceTerms.map((term) => (
+                <Button
+                  key={term}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  aria-label={`Remove ${term} preference`}
+                  onClick={() =>
+                    onChange({
+                      ...filters,
+                      preferenceTerms: filters.preferenceTerms?.filter((value) => value !== term),
+                    })
+                  }
+                >
+                  {term} ×
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <Button type="button" variant="outline" className="w-full rounded-full" onClick={() => onChange({})}>
           Reset filters

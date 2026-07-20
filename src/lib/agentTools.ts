@@ -13,17 +13,54 @@ import {
   rememberBuyerCatalogItems,
   waitForBuyerCatalogItems,
 } from './buyerCatalogCache';
-import { getCommerceItem, searchCommerceItems } from './commerceClient';
+import { getCommerceItem, orderFromCommerceExecution, searchCommerceItems } from './commerceClient';
 import { executeBuyerCheckout } from './agentGuardCheckout';
 import { writeCheckoutOutcome } from './checkoutOutcome';
-import { createPaidOrderFromAgentGuard } from './localOrders';
+import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from './commerceConfig';
+import { shouldUseLocalCartFallback } from './cartFailurePolicy';
+import { dispatchCheckoutPrefill } from './checkoutPrefill';
+import {
+  clearLocalSession,
+  getLocalSession,
+  updateLocalBuyer,
+  updateLocalDeliveryAddress,
+} from './localCart';
 import {
   dispatchBuyerSearch,
   isOndcNetworkSearchReady,
 } from './ondc/protocolClient';
-import { rememberSamanthaFact } from './samanthaMemory';
+import {
+  loadSamanthaMemory,
+  relevantSearchPreferences,
+  rememberSamanthaFact,
+} from './samanthaMemory';
 import { startBuyerRuntimeBackground } from './samanthaRuntimeHandoff';
-import type { UCPItem } from '../types';
+import type { UCPAddress, UCPItem } from '../types';
+
+/** Product nouns preferred over trailing purpose/time words in NL asks. */
+const CATALOG_PRODUCT_NOUNS = [
+  'atta',
+  'flour',
+  'milk',
+  'banana',
+  'bananas',
+  'apple',
+  'apples',
+  'rice',
+  'dal',
+  'oil',
+  'ghee',
+  'sugar',
+  'salt',
+  'bread',
+  'eggs',
+  'tea',
+  'coffee',
+  'wheat',
+  'poha',
+  'tv',
+  'television',
+] as const;
 
 /** NL agent asks → short keyword for demo-commerce / results URL (not the full sentence). */
 export function catalogSearchQuery(raw: string): string {
@@ -57,16 +94,135 @@ export function catalogSearchQuery(raw: string): string {
     'price',
     'priced',
     'cost',
+    // Purpose / time fillers that must not become the search keyword
+    'tonight',
+    'today',
+    'tomorrow',
+    'evening',
+    'morning',
+    'afternoon',
+    'breakfast',
+    'lunch',
+    'dinner',
+    'recipe',
+    'options',
+    'option',
+    'looking',
+    'actually',
+    'again',
+    'can',
+    'you',
+    'me',
+    'that',
+    'this',
+    'what',
+    'was',
+    'were',
+    'showed',
+    'somebody',
+    'someone',
+    'something',
+    'anything',
   ]);
   const tokens = raw
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter((t) => t.length > 2 && !stop.has(t) && !/^\d+$/.test(t));
-  // Product asks commonly lead with a brand/qualifier ("AgentGuard PreProd
+    .filter((t) => t.length >= 2 && !stop.has(t) && !/^\d+$/.test(t));
+  const last = tokens.at(-1);
+  const previous = tokens.at(-2);
+  // Compound grocery nouns before bare noun preference.
+  if (last === 'dal' && previous && ['toor', 'chana', 'moong', 'urad', 'masoor'].includes(previous)) {
+    return `${previous} ${last}`;
+  }
+  if (last === 'rice' && previous && ['basmati', 'white', 'brown', 'sona', 'masoori'].includes(previous)) {
+    return `${previous} ${last}`;
+  }
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (
+      tokens[i + 1] === 'dal' &&
+      ['toor', 'chana', 'moong', 'urad', 'masoor'].includes(tokens[i])
+    ) {
+      return `${tokens[i]} dal`;
+    }
+    if (
+      tokens[i + 1] === 'rice' &&
+      ['basmati', 'white', 'brown', 'sona', 'masoori'].includes(tokens[i])
+    ) {
+      return `${tokens[i]} rice`;
+    }
+  }
+  // Prefer a known product noun when present ("atta for roti tonight" → atta;
+  // "find a TV" → tv — short tokens must survive the length filter).
+  for (const noun of CATALOG_PRODUCT_NOUNS) {
+    if (tokens.includes(noun) || raw.toLowerCase().split(/\W+/).includes(noun)) {
+      if (noun === 'television') return 'tv';
+      return (noun === 'bananas' ? 'banana' : noun === 'apples' ? 'apple' : noun).slice(0, 48);
+    }
+  }
+  // Product asks commonly lead with a brand/qualifier ("AgentGuard
   // Atta", "organic toned milk"). The final meaningful token is the stable
   // catalog noun and avoids dispatching the brand alone.
-  return (tokens.at(-1) || raw.trim() || 'grocery').slice(0, 48);
+  return (last || raw.trim() || 'grocery').slice(0, 48);
+}
+
+/**
+ * Keep the customer's current product request authoritative when the model
+ * supplies only a saved qualifier (for example, `unpolished`) as its tool
+ * query. Memory-only turns do not override a later explicit tool query.
+ */
+export function resolveCustomerSearchQuery(toolQuery: string, latestUserText?: string | null): string {
+  const tool = toolQuery.trim();
+  const customer = String(latestUserText ?? '').trim();
+  const hasCurrentSearchIntent =
+    /\b(?:find|search|show|buy|get|need|want|looking\s+for)\b/i.test(customer);
+  return hasCurrentSearchIntent ? customer : tool || customer;
+}
+
+/** Preferences safe to recover locally when Realtime text transport is unavailable. */
+export function localSearchPreferenceFacts(raw: string): string[] {
+  const lower = raw.toLowerCase();
+  const facts: string[] = [];
+  for (const term of ['organic', 'unpolished', 'whole wheat', 'gluten free', 'sugar free']) {
+    if (lower.includes(term)) facts.push(`Prefer ${term} groceries`);
+  }
+  const explicitArea = raw.match(/deliver(?:y)?\s+(?:to|in)\s+([a-z][a-z -]{1,30})/i)?.[1];
+  const areaBeforeDelivery = raw.match(/\b([A-Z][a-z-]{1,30})\s+delivery\b/)?.[1];
+  const area = (explicitArea || areaBeforeDelivery || '').trim();
+  if (area) facts.push(`Deliver to ${area}`);
+  return facts;
+}
+
+/** Map a product ask onto the Buyer SearchBar category lane. */
+export function inferBuyerSearchCategory(rawQuery: string): string {
+  const blob = `${catalogSearchQuery(rawQuery)} ${rawQuery}`.toLowerCase();
+  if (/\b(tv|television|laptop|phone|mobile|headphone|earbud|earbuds|camera)\b/.test(blob)) {
+    return 'electronics';
+  }
+  if (/\b(shirt|saree|jeans|kurta|dress|fashion|apparel)\b/.test(blob)) {
+    return 'fashion';
+  }
+  if (/\b(restaurant|biryani|pizza|burger|meal|thali)\b/.test(blob)) {
+    return 'restaurant';
+  }
+  return 'grocery';
+}
+
+export function buildPersonalizedBuyerSearchPath(
+  rawQuery: string,
+  principalId?: string | null,
+): { path: string; appliedLabels: string[] } {
+  const query = catalogSearchQuery(rawQuery);
+  const category = inferBuyerSearchCategory(rawQuery);
+  const relevant = relevantSearchPreferences(loadSamanthaMemory(principalId), rawQuery);
+  const params = new URLSearchParams({ category, q: query });
+  if (relevant.maxPrice !== undefined) params.set('max_price', String(relevant.maxPrice));
+  if (relevant.minRating !== undefined) params.set('min_rating', String(relevant.minRating));
+  if (relevant.deliveryArea) params.set('delivery_area', relevant.deliveryArea);
+  if (relevant.preferenceTerms.length) {
+    params.set('preference', relevant.preferenceTerms.join(','));
+  }
+  return { path: `/results?${params.toString()}`, appliedLabels: relevant.appliedLabels };
 }
 
 function compactCachedForQuery(query: string): Array<{
@@ -98,6 +254,7 @@ export type BuyerToolName =
   | 'clear_cart'
   | 'remove_from_cart'
   | 'set_cart_quantity'
+  | 'fill_checkout'
   | 'checkout_commit'
   | 'remember_preference'
   | 'delegate_to_runtime_agent';
@@ -126,7 +283,6 @@ export const BUYER_NAV_ALLOWLIST = [
   '/checkout',
   '/orders',
   '/config',
-  '/agent',
 ] as const;
 
 /** Coerce model tool args (e.g. path="cart") into an app route — not user-utterance parsing. */
@@ -156,8 +312,11 @@ export function coerceBuyerNavPath(raw: string): string | null {
     config: '/config',
     settings: '/config',
     preferences: '/config',
-    agentguard: '/config',
-    agent: '/agent',
+    agentguard: '/config?tab=agent-guard',
+    'agent guard': '/config?tab=agent-guard',
+    samantha: '/config?tab=samantha',
+    activity: '/config?tab=activity',
+    profile: '/config?tab=profile',
   };
   return soft[label] ?? null;
 }
@@ -216,6 +375,7 @@ const READ_TOOLS: BuyerToolName[] = [
   'clear_cart',
   'remove_from_cart',
   'set_cart_quantity',
+  'fill_checkout',
   'remember_preference',
   'delegate_to_runtime_agent',
 ];
@@ -362,7 +522,7 @@ export const BUYER_TOOL_DEFINITIONS = [
     type: 'function' as const,
     name: 'navigate_to',
     description:
-      'Short tool: navigate the Buyer UI so the user sees that page (/search, /cart, /checkout, /orders, /config, /agent, /results?q=…). ' +
+      'Short tool: navigate the Buyer UI so the user sees that page (/search, /cart, /checkout, /orders, /config, /results?q=…). ' +
       'Use when they ask to open/go to a page. Prefer search_catalog for product find (it opens /results).',
     parameters: {
       type: 'object',
@@ -422,6 +582,31 @@ export const BUYER_TOOL_DEFINITIONS = [
         quantity: { type: 'number', description: 'Desired final quantity. Zero removes the line.' },
       },
       required: ['quantity'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'fill_checkout',
+    description:
+      'Prefill Buyer checkout form fields (billing + delivery) and open /checkout. ' +
+      'Use when the user asks to fill/enter/prefill name, phone, email, or address. ' +
+      'Does NOT place the order — never call checkout_commit from this tool. ' +
+      'Omit session_id (host fills). Pass any subset of fields the user provided.',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'Optional; host fills from cart session.' },
+        name: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        tax_id: { type: 'string', description: 'Optional GSTIN' },
+        line1: { type: 'string', description: 'Street address' },
+        city: { type: 'string' },
+        state: { type: 'string' },
+        postal_code: { type: 'string', description: '6-digit PIN' },
+        country: { type: 'string' },
+      },
+      required: [],
     },
   },
   {
@@ -500,11 +685,11 @@ export async function runBuyerTool(
   if (name === 'search_catalog') {
     const query = String(args.query ?? '');
     const catalogQ = catalogSearchQuery(query);
-    const q = encodeURIComponent(catalogQ);
+    const personalized = buildPersonalizedBuyerSearchPath(query, subject || null);
     // Always open results first so the user watches offers load (not a silent background search).
-    const resultsPath = `/results?category=grocery&q=${q}`;
+    const resultsPath = personalized.path;
     // Warm the visible/add cache before any remote readiness call. The signed
-    // network dispatch still runs below, but a slow PreProd status probe must
+    // network dispatch still runs below, but a slow status probe must
     // not prevent Samantha from selecting a configured Seller offer.
     let configuredSellerItems: UCPItem[] = [];
     try {
@@ -515,7 +700,33 @@ export async function runBuyerTool(
       // Network search can still proceed without the configured Seller cache.
     }
 
-    // PreProd network lane: dispatch once + early return.
+    // Seller-published hits already warm: paint once and stop. Dispatching ONDC
+    // after early orb nav was causing TV to flash → loading → reload.
+    if (configuredSellerItems.length > 0) {
+      const compact = configuredSellerItems.slice(0, 8).map((item) => ({
+        id: item.id,
+        name: item.name,
+        price_inr: item.price?.value,
+        provider: item._provider,
+      }));
+      return {
+        ok: true,
+        tool: name,
+        message: `Showing ${configuredSellerItems.length} item(s) for “${catalogQ}” on the results page.`,
+        data: {
+          items: compact,
+          count: configuredSellerItems.length,
+          demo_count: configuredSellerItems.length,
+          source: 'demo-commerce',
+          loading: false,
+          can_assert_empty: false,
+          applied_preferences: personalized.appliedLabels,
+        },
+        navigateTo: resultsPath,
+      };
+    }
+
+    // Network lane: dispatch once + early return.
     // ResultsPage owns the visible catalog poll (shared via ondc_txn) — do NOT
     // run a second ondcSearchAndCollect here (double poll = laggy orb + GW load).
     if (await isOndcNetworkSearchReady()) {
@@ -526,21 +737,28 @@ export async function runBuyerTool(
         // matching offers (prior search / progressive paint), hand ids to the model
         // so add_to_cart can run without a useless empty-id loop.
         const cached = compactCachedForQuery(catalogQ || query);
+        const emptyDemo = cached.length === 0;
         return {
           ok: true,
           tool: name,
           message: cached.length
             ? `Opened results for “${catalogQ}” — ${cached.length} cached offer(s) ready to add; page still refreshing.`
-            : txn
-              ? `Opened results for “${catalogQ}” — watching offers load on the page. When adding, use add_to_cart with the product name (ids fill as offers paint).`
-              : `Opened results for “${catalogQ}”.`,
+            : emptyDemo
+              ? `Opened results for “${catalogQ}”. Seller catalog has 0 matches so far — watch the page; if it stays at 0 matches, tell the user honestly none were found (do not invent products).`
+              : txn
+                ? `Opened results for “${catalogQ}” — watching offers load on the page. When adding, use add_to_cart with the product name (ids fill as offers paint).`
+                : `Opened results for “${catalogQ}”.`,
           data: {
             items: cached,
             count: cached.length,
+            demo_count: 0,
             source: 'ondc-network',
             transaction_id: txn || undefined,
             ack: typeof dispatched.ack === 'string' ? dispatched.ack : undefined,
+            // Keep loading true so ResultsPage can paint network catalogs; the
+            // orb host flips can_assert_empty after waitForBuyerCatalogItems.
             loading: true,
+            applied_preferences: personalized.appliedLabels,
           },
           navigateTo: txn
             ? `${resultsPath}&ondc_txn=${encodeURIComponent(txn)}`
@@ -550,7 +768,7 @@ export async function runBuyerTool(
         return {
           ok: false,
           tool: name,
-          message: err instanceof Error ? err.message : 'ONDC network search failed',
+          message: err instanceof Error ? err.message : 'ONDC search failed',
           data: { items: [], count: 0, source: 'ondc-network' },
           navigateTo: resultsPath,
         };
@@ -580,8 +798,14 @@ export async function runBuyerTool(
       message:
         items.length > 0
           ? `Showing ${items.length} item(s) for “${catalogQ}” on the results page.`
-          : `Opened results for “${catalogQ}”, but the ONDC network is not available.`,
-      data: { items: compact, count: items.length, source: 'demo-commerce' },
+          : `No offers found for “${catalogQ}”. Tell the user honestly none matched — do not invent products.`,
+      data: {
+        items: compact,
+        count: items.length,
+        source: 'demo-commerce',
+        can_assert_empty: items.length === 0,
+        applied_preferences: personalized.appliedLabels,
+      },
       navigateTo: resultsPath,
     };
   }
@@ -593,7 +817,7 @@ export async function runBuyerTool(
       return {
         ok: false,
         tool: name,
-        message: 'Unknown Buyer path. Use /search, /cart, /checkout, /orders, /config, /agent, or /results?q=…',
+        message: 'Unknown Buyer path. Use /search, /cart, /checkout, /orders, /config, or /results?q=…',
       };
     }
     return { ok: true, tool: name, message: `Navigating to ${path}.`, navigateTo: path };
@@ -719,6 +943,140 @@ export async function runBuyerTool(
     };
   }
 
+  if (name === 'fill_checkout') {
+    const sessionId = String(args.session_id ?? '').trim();
+    if (!sessionId) {
+      return { ok: false, tool: name, message: 'session_id required to fill checkout.' };
+    }
+    const nameVal = String(args.name ?? args.full_name ?? '').trim();
+    const emailVal = String(args.email ?? '').trim();
+    const phoneVal = String(args.phone ?? args.mobile ?? '').trim();
+    const taxId = String(args.tax_id ?? args.gstin ?? '').trim();
+    const line1 = String(args.line1 ?? args.street ?? args.address ?? '').trim();
+    const city = String(args.city ?? '').trim();
+    const state = String(args.state ?? '').trim();
+    const postalCode = String(args.postal_code ?? args.pincode ?? args.pin ?? '').trim();
+    const country = String(args.country ?? 'IND').trim() || 'IND';
+    const hasBilling = Boolean(nameVal || emailVal || phoneVal || taxId);
+    const hasDelivery = Boolean(line1 || city || state || postalCode);
+    if (!hasBilling && !hasDelivery) {
+      return {
+        ok: false,
+        tool: name,
+        message: 'Tell me the name, phone, email, and/or delivery address to fill.',
+        navigateTo: '/checkout',
+      };
+    }
+    try {
+      let existingBuyer: { name?: string; email?: string; phone?: string } = {};
+      try {
+        existingBuyer = getLocalSession(sessionId).buyer ?? {};
+      } catch {
+        /* new / missing session — require full billing if any billing field set */
+      }
+      if (hasBilling) {
+        const merged = {
+          name: nameVal || existingBuyer.name || '',
+          email: emailVal || existingBuyer.email || '',
+          phone: phoneVal || existingBuyer.phone || '',
+          taxId: taxId || undefined,
+        };
+        if (!merged.name.trim() || !merged.email.trim() || !merged.phone.trim()) {
+          return {
+            ok: false,
+            tool: name,
+            message: 'Billing needs full name, email, and phone (or fill all three together).',
+            navigateTo: '/checkout',
+          };
+        }
+        updateLocalBuyer(sessionId, merged);
+        if (!shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
+          const response = await fetch(buildCommerceUrl(`/api/cart/buyer/${sessionId}`), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(merged),
+          });
+          if (!response.ok) {
+            return {
+              ok: false,
+              tool: name,
+              message: `Could not save billing (HTTP ${response.status}).`,
+              navigateTo: '/checkout',
+            };
+          }
+        }
+      }
+      if (hasDelivery) {
+        const address: UCPAddress = {
+          line1: line1 || '',
+          city,
+          state,
+          postalCode,
+          country,
+        };
+        // Merge street from session when only city/pin provided
+        try {
+          const session = getLocalSession(sessionId);
+          if (!address.line1) address.line1 = session.buyer?.street || '';
+          if (!address.city) address.city = session.buyer?.city || '';
+          if (!address.state) address.state = session.buyer?.state || '';
+          if (!address.postalCode) address.postalCode = session.buyer?.pincode || '';
+        } catch {
+          /* ignore */
+        }
+        if (!address.line1 || !address.city || !address.state || !address.postalCode) {
+          return {
+            ok: false,
+            tool: name,
+            message: 'Delivery needs street, city, state, and 6-digit PIN (or fill all four together).',
+            navigateTo: '/checkout',
+          };
+        }
+        updateLocalDeliveryAddress(sessionId, address);
+      }
+      dispatchCheckoutPrefill({
+        sessionId,
+        name: nameVal || undefined,
+        email: emailVal || undefined,
+        phone: phoneVal || undefined,
+        taxId: taxId || undefined,
+        line1: line1 || undefined,
+        city: city || undefined,
+        state: state || undefined,
+        postalCode: postalCode || undefined,
+        country,
+      });
+      const parts: string[] = [];
+      if (hasBilling) parts.push('billing');
+      if (hasDelivery) parts.push('delivery');
+      return {
+        ok: true,
+        tool: name,
+        message: `Filled ${parts.join(' + ')} on checkout. Review the form, then ask me to place the order when ready.`,
+        navigateTo: '/checkout',
+        data: {
+          filled: { billing: hasBilling, delivery: hasDelivery },
+          name: nameVal || undefined,
+          email: emailVal || undefined,
+          phone: phoneVal || undefined,
+          city: city || undefined,
+          postal_code: postalCode || undefined,
+        },
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        tool: name,
+        message: err instanceof Error ? err.message : 'Could not fill checkout.',
+        navigateTo: '/checkout',
+      };
+    }
+  }
+
+  if (name !== 'checkout_commit') {
+    return { ok: false, tool: name, message: `Unknown tool: ${name}` };
+  }
+
   // checkout_commit — session cookie principal; wallet body only for legacy
   const amountInr = Math.round(Number(args.amount_inr) || 0);
   const sessionId = String(args.session_id ?? '');
@@ -762,16 +1120,21 @@ export async function runBuyerTool(
     let orderId: string | null = null;
     let navigateTo = '/checkout';
     if ((decision === 'allow' || !decision) && receiptId) {
-      const order = createPaidOrderFromAgentGuard({
-        sessionId,
-        amountInr,
-        receiptId,
-        subjectId: subject,
-      });
+      const order = orderFromCommerceExecution(executed.execution);
       if (order) {
+        clearLocalSession(sessionId);
         orderId = order.id;
         navigateTo = `/orders/${order.id}`;
       }
+    }
+    if ((decision === 'allow' || !decision) && receiptId && !orderId) {
+      return {
+        ok: false,
+        tool: name,
+        message: 'Checkout was authorized but the shared exchange did not return an order.',
+        decision,
+        receiptId,
+      };
     }
 
     writeCheckoutOutcome({

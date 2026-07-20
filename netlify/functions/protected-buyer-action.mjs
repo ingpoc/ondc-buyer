@@ -1,3 +1,6 @@
+// Legacy Netlify-only compatibility adapter. Current Render/Vercel product paths
+// execute mutations through gateway AgentGuard. Owner: ondcbuyer/netlify.toml.
+// Delete after 2026-08-01 with the remaining Netlify protected redirects.
 const PROTECTED_ACTIONS = new Set([
   'high_value_checkout',
   'restricted_category_checkout',

@@ -42,3 +42,11 @@ export function resolveTrustApiUrl() {
 export const IDENTITY_URL = resolveIdentityApiUrl();
 export const IDENTITY_WEB_URL = resolveIdentityWebUrl();
 export const TRUST_API_URL = resolveTrustApiUrl();
+
+/**
+ * Auth session cookie is set on the gateway origin. Always call `/api/auth/*`
+ * there (local `:43101`, FQDN gateway). Same-origin Vite proxy cannot see that cookie.
+ */
+export function authFetchBase(): string {
+  return IDENTITY_URL;
+}

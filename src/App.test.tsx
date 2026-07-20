@@ -1,94 +1,40 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { HeaderStatusRail } from './App';
-import type { PortfolioTrustState } from './lib/trust';
+import { describe, expect, it } from 'vitest';
 
-function trustState(state: PortfolioTrustState, loading = false) {
-  return {
-    state,
-    eligible: state === 'verified',
-    reason: `reason for ${state}`,
-    trust: null,
-    loading,
-    error: null,
-  };
-}
+import {
+  getHeaderTrustMeta,
+  getTrustMeta,
+  headerRuntimeIsHealthy,
+  headerTrustIsHealthy,
+} from './App';
 
-function runtimeState() {
-  return {
-    app_id: 'ondc-buyer' as const,
-    auth_mode: 'local_cli' as const,
-    model: 'test-model',
-    runtime_available: true,
-    agent_access: true,
-    trust_state: 'verified' as const,
-    trust_required_for_write: true,
-    mode: 'full' as const,
-    usage: {
-      requests_used: 0,
-      requests_limit: 0,
-      period_start: '2026-05-12T00:00:00.000Z',
-      period_end: '2026-06-12T00:00:00.000Z',
-      estimated_cost_usd: 0,
-    },
-    allowed_capabilities: ['search', 'checkout_mutation'],
-    blocked_reason: null,
-    loading: false,
-    error: null,
-    refresh: vi.fn(),
-  };
-}
-
-describe('HeaderStatusRail', () => {
+describe('Buyer header disclosure helpers', () => {
   it.each([
-    ['no_identity', 'Sign in required'],
-    ['identity_present_unverified', 'unverified'],
-    ['verified', 'verified'],
-    ['manual_review', 'review'],
-    ['revoked_or_blocked', 'blocked'],
-  ] as const)('renders buyer header trust state for %s', (state, label) => {
-    const onToggle = vi.fn();
-    const { rerender } = render(
-      <HeaderStatusRail
-        subjectId={null}
-        walletAddress="buyer-wallet"
-        runtime={runtimeState()}
-        trust={trustState(state)}
-        activeControl={null}
-        onToggle={onToggle}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open trust status' }));
-    expect(onToggle).toHaveBeenCalledWith('trust');
-
-    rerender(
-      <HeaderStatusRail
-        subjectId={null}
-        walletAddress="buyer-wallet"
-        runtime={runtimeState()}
-        trust={trustState(state)}
-        activeControl="trust"
-        onToggle={onToggle}
-      />,
-    );
-
-    expect(screen.getByText('Trust')).toBeInTheDocument();
-    expect(screen.getByText(label)).toBeInTheDocument();
+    ['no_identity', 'Sign in required', false],
+    ['identity_present_unverified', 'Trust unverified', false],
+    ['verified', 'Trust verified', true],
+    ['manual_review', 'Trust review', false],
+    ['revoked_or_blocked', 'Trust blocked', false],
+  ] as const)('maps %s to label and healthy=%s', (state, label, healthy) => {
+    const meta = getTrustMeta(state);
+    expect(meta.label).toBe(label);
+    expect(headerTrustIsHealthy(meta.label)).toBe(healthy);
   });
 
-  it('renders loading state before trust resolution finishes', () => {
-    render(
-      <HeaderStatusRail
-        subjectId={null}
-        walletAddress="buyer-wallet"
-        runtime={runtimeState()}
-        trust={trustState('no_identity', true)}
-        activeControl="trust"
-        onToggle={vi.fn()}
-      />,
-    );
+  it('treats session principals as verified even when wallet trust is no_identity', () => {
+    const meta = getHeaderTrustMeta('no_identity', false, 'principal:auth0:google-oauth2:fixture');
+    expect(meta.label).toBe('Trust verified');
+    expect(headerTrustIsHealthy(meta.label)).toBe(true);
+  });
 
-    expect(screen.getByText('loading')).toBeInTheDocument();
+  it('treats Ready as healthy assistant status', () => {
+    expect(headerRuntimeIsHealthy('Ready')).toBe(true);
+    expect(headerRuntimeIsHealthy('Unavailable')).toBe(false);
+    expect(headerRuntimeIsHealthy('Checking')).toBe(false);
+  });
+
+  it('exposes loading trust copy without marking it healthy', () => {
+    const meta = getTrustMeta('verified', true);
+    expect(meta.label).toBe('Trust loading');
+    expect(headerTrustIsHealthy(meta.label)).toBe(false);
   });
 });

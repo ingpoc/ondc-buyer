@@ -1,5 +1,5 @@
-import type { UCPItem, UCPOrder, UCPSession } from '../types';
-import { clearLocalSession } from './localCart';
+import type { UCPItem, UCPOrder } from '../types';
+import type { BuyerSupportCase } from '../types/agent';
 import { TRUST_API_URL } from './identityUrls';
 import { isLocalBrowserHost } from './loopback';
 
@@ -8,9 +8,17 @@ export interface DemoCommerceItem {
   version: number;
   status: string;
   seller_id: string;
+  seller_name?: string;
   title: string;
   description: string;
   price_inr: number;
+  inventory?: number;
+  category_id?: string;
+  delivery_estimate?: string;
+  return_policy?: string;
+  image_url?: string;
+  image_caption?: string;
+  delivery_areas?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -21,7 +29,9 @@ export interface DemoCommerceOrder {
   message_id: string;
   buyer_id: string;
   seller_id: string;
+  seller_name?: string;
   item_id: string;
+  item_title?: string;
   item_version: number;
   quantity: number;
   amount_inr: number;
@@ -31,6 +41,26 @@ export interface DemoCommerceOrder {
     amount_inr?: number;
     reference_id?: string;
   };
+  delivery_address?: UCPOrder['deliveryAddress'];
+  authorization?: {
+    decision?: string;
+    reason_code?: string;
+    receipt_id?: string;
+    approval_id?: string | null;
+    amount_inr?: number;
+    recorded_at?: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+interface DemoCommerceIssue {
+  issue_id: string;
+  order_id: string;
+  status: string;
+  reason: string;
+  description: string;
+  response?: string;
   created_at: string;
   updated_at: string;
 }
@@ -59,10 +89,6 @@ async function demoFetch<T>(endpoint: string, init: RequestInit = {}): Promise<T
   return body.data as T;
 }
 
-function makeIdempotencyKey(scope: string, id: string) {
-  return `${scope}:${id}:${Date.now()}`;
-}
-
 export function mapDemoItemToBuyerItem(item: DemoCommerceItem): UCPItem {
   return {
     id: item.item_id,
@@ -76,18 +102,24 @@ export function mapDemoItemToBuyerItem(item: DemoCommerceItem): UCPItem {
       currency: 'INR',
       value: item.price_inr.toFixed(2),
     },
-    images: [],
-    category: 'Grocery',
+    images: item.image_url ? [{ url: item.image_url }] : [],
+    category: item.category_id || 'Grocery',
+    quantity: item.inventory,
     _provider: item.seller_id || 'ONDC seller',
     provider: {
       id: item.seller_id || 'ondc-seller',
-      name: item.seller_id || 'ONDC seller',
+      name: item.seller_name,
     },
+    deliveryEstimate: item.delivery_estimate,
+    returnPolicy: item.return_policy,
+    imageCaption: item.image_caption,
+    deliveryAreas: item.delivery_areas,
   };
 }
 
 export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
   const total = order.amount_inr;
+  const unitPrice = total / Math.max(order.quantity, 1);
   const status = order.status === 'accepted'
     ? 'accepted'
     : order.status === 'fulfilled' || order.status === 'closed'
@@ -102,15 +134,15 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
     updatedAt: order.updated_at,
     provider: {
       id: order.seller_id,
-      name: order.seller_id,
-      verified: true,
+      name: order.seller_name,
+      verified: Boolean(order.seller_name),
     },
     items: [
       {
         id: order.item_id,
-        name: order.item_id,
+        name: order.item_title || order.item_id,
         quantity: order.quantity,
-        price: { currency: 'INR', value: total.toFixed(2) },
+        price: { currency: 'INR', value: unitPrice.toFixed(2) },
       },
     ],
     quote: {
@@ -120,18 +152,49 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
     fulfillment: {
       type: 'delivery',
       status: status === 'delivered' ? 'delivered' : status === 'cancelled' ? 'cancelled' : 'pending',
-      providerName: 'Simulated ONDC logistics',
       tracking: {
         status,
-        statusMessage: `Commerce transaction ${order.transaction_id}`,
+        statusMessage: 'Order is awaiting seller confirmation.',
       },
     },
-    payment: {
-      type: 'upi',
-      status: order.payment?.status === 'succeeded' || order.status === 'paid' ? 'PAID' : 'NOT-PAID',
-      amount: { currency: 'INR', value: total.toFixed(2) },
-      transactionId: order.transaction_id,
-    },
+    deliveryAddress: order.delivery_address,
+    authorization: order.authorization
+      ? {
+          decision: order.authorization.decision || 'allow',
+          reason: order.authorization.approval_id
+            ? 'Exact one-time approval was confirmed for this order.'
+            : 'The order was within the active automatic checkout limit.',
+          receiptReference: order.authorization.receipt_id,
+          approvalReference: order.authorization.approval_id || undefined,
+          amountInr: order.authorization.amount_inr,
+          recordedAt: order.authorization.recorded_at,
+        }
+      : undefined,
+  };
+}
+
+export function orderFromCommerceExecution(execution?: Record<string, unknown> | null): UCPOrder | null {
+  const order = execution?.order;
+  if (!order || typeof order !== 'object') return null;
+  return mapDemoOrderToBuyerOrder(order as DemoCommerceOrder);
+}
+
+function mapDemoIssueToBuyerSupportCase(issue: DemoCommerceIssue): BuyerSupportCase {
+  const allowedIssueTypes = ['cancellation', 'fulfillment', 'post_delivery', 'payment', 'other'] as const;
+  const issueType = allowedIssueTypes.includes(issue.reason as (typeof allowedIssueTypes)[number])
+    ? (issue.reason as BuyerSupportCase['issue_type'])
+    : 'other';
+  return {
+    case_id: issue.issue_id,
+    network_case_id: issue.issue_id,
+    order_id: issue.order_id,
+    issue_type: issueType,
+    description: issue.description,
+    evidence_links: [],
+    status: issue.status === 'resolved' ? 'resolved' : issue.status === 'open' ? 'open' : 'investigating',
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+    resolution_note: issue.response ?? null,
   };
 }
 
@@ -153,30 +216,20 @@ export async function getCommerceItem(itemId: string) {
   return mapDemoItemToBuyerItem(data.item);
 }
 
-export async function createCommerceOrder(input: {
-  sessionId: string;
-  session: UCPSession;
-  buyerId?: string | null;
-}) {
-  const firstLine = input.session.items[0];
-  if (!firstLine) {
-    throw new Error('Cart is empty.');
-  }
-  const idempotencyKey = makeIdempotencyKey('buyer-order', input.sessionId);
-  const data = await demoFetch<{ order: DemoCommerceOrder; transaction_id: string }>(
-    '/api/demo-commerce/buyer/orders',
-    {
-      method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({
-        idempotency_key: idempotencyKey,
-        item_id: firstLine.item.id,
-        quantity: firstLine.quantity,
-        buyer_id: input.buyerId || 'demo-buyer',
-        payment_mode: 'success',
-      }),
-    },
-  );
-  clearLocalSession(input.sessionId);
+export async function listCommerceBuyerOrders() {
+  const data = await demoFetch<{ orders: DemoCommerceOrder[]; count: number }>('/api/demo-commerce/buyer/orders');
+  return data.orders.map(mapDemoOrderToBuyerOrder);
+}
+
+export async function getCommerceOrder(orderId: string) {
+  const data = await demoFetch<{ order: DemoCommerceOrder }>(`/api/demo-commerce/buyer/orders/${orderId}`);
   return mapDemoOrderToBuyerOrder(data.order);
+}
+
+export async function listCommerceBuyerIssues(orderId?: string) {
+  const params = new URLSearchParams();
+  if (orderId) params.set('order_id', orderId);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const data = await demoFetch<{ issues: DemoCommerceIssue[]; count: number }>(`/api/demo-commerce/buyer/issues${suffix}`);
+  return data.issues.map(mapDemoIssueToBuyerSupportCase);
 }

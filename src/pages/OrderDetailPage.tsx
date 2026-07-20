@@ -3,20 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, MapPin, Truck } from 'lucide-react';
 import { TrustNotice } from '../components/TrustStatus';
 import { useTrustState, useSubject } from '../hooks';
-import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
-import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
-import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
-import { cancelVerifiedDemoOrder, getDemoOrder } from '../lib/localOrders';
+import { effectiveElevatedTrustState } from '../lib/trust';
 import { fetchBuyerOrder } from '../lib/orderApi';
 import {
-  buildLocalSupportCase,
-  createVerifiedLocalSupportCase,
-  listSupportCases,
-} from '../lib/localSupportCases';
-import {
-  buildProtectedBuyerActionHeaders,
-  buildProtectedBuyerActionPolicy,
-} from '../lib/protectedBuyerActions';
+  getCommerceOrder,
+  listCommerceBuyerIssues,
+  orderFromCommerceExecution,
+} from '../lib/commerceClient';
+import { executeBuyerProtectedAction, verifyBuyerReceipt } from '../lib/agentGuardCheckout';
+import { customerReference, sellerDisplayName } from '../lib/displayText';
 import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
 import { Badge } from '../components/ui/badge';
@@ -27,20 +22,15 @@ import { Spinner } from '../components/ui/spinner';
 const CANCELLABLE_STATUSES: UCPOrderStatus[] = ['created', 'accepted', 'in_progress'];
 const isCancellable = (status: UCPOrderStatus): boolean => CANCELLABLE_STATUSES.includes(status);
 
-/** FQDN has no /api/orders on Vercel — AG checkout writes localStorage; use that like OrdersPage. */
-const fetchOrder = async (
-  orderId: string,
-  subjectId: string | null,
-): Promise<UCPOrder | null> => {
-  if (!subjectId) return null;
-  if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
-    return getDemoOrder(orderId, subjectId);
-  }
+const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
   try {
-    return await fetchBuyerOrder(orderId);
-  } catch {
-    // Samantha AG checkout may still persist locally when remote order API is absent.
-    return getDemoOrder(orderId, subjectId);
+    return await getCommerceOrder(orderId);
+  } catch (commerceError) {
+    try {
+      return await fetchBuyerOrder(orderId);
+    } catch {
+      throw commerceError;
+    }
   }
 };
 
@@ -91,13 +81,14 @@ function formatPrice(currency: string, value: string | undefined, quantity = 1) 
 export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { walletAddress, principalId, subjectId } = useSubject();
+  const { walletAddress, principalId } = useSubject();
   const trust = useTrustState(walletAddress);
   const [order, setOrder] = useState<UCPOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [supportCases, setSupportCases] = useState<BuyerSupportCase[]>([]);
+  const [receiptVerified, setReceiptVerified] = useState<boolean | null>(null);
   const [issueType, setIssueType] = useState<BuyerSupportCase['issue_type']>('fulfillment');
   const [issueDescription, setIssueDescription] = useState('');
 
@@ -110,12 +101,24 @@ export function OrderDetailPage(): JSX.Element {
       }
 
       try {
-        const data = await fetchOrder(id, subjectId);
+        const data = await fetchOrder(id);
         if (!data) {
           setError('Order not found');
         } else {
           setOrder(data);
-          setSupportCases(listSupportCases(data.id));
+          setSupportCases(await listCommerceBuyerIssues(data.id));
+          if (data.authorization?.receiptReference) {
+            try {
+              const verification = await verifyBuyerReceipt({
+                receiptId: data.authorization.receiptReference,
+              });
+              setReceiptVerified(verification.valid);
+            } catch {
+              setReceiptVerified(false);
+            }
+          } else {
+            setReceiptVerified(null);
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load order');
@@ -125,62 +128,34 @@ export function OrderDetailPage(): JSX.Element {
     };
 
     void loadOrder();
-  }, [id, subjectId]);
+  }, [id]);
 
   async function handleCancel() {
     if (!order || !id) return;
-    if (!elevatedTrustSatisfied(trust.state, principalId)) {
-      setError(trust.reason || 'Verified buyer trust is required before cancelling orders.');
-      return;
-    }
-
     if (!confirm('Are you sure you want to cancel this order?')) {
       return;
     }
 
     setCancelling(true);
     try {
-      if (COMMERCE_DEMO_MODE) {
-        const updatedOrder = cancelVerifiedDemoOrder(
-          id,
-          effectiveElevatedTrustState(trust.state, principalId),
-          subjectId ?? '',
-        );
-        if (!updatedOrder) {
-          throw new Error('Order not found');
-        }
-        setOrder(updatedOrder);
-        return;
-      }
-
-      const trustPolicy = buildProtectedBuyerActionPolicy({
-        action: 'refund_request',
+      const executed = await executeBuyerProtectedAction({
         walletAddress,
-        trustState: effectiveElevatedTrustState(trust.state, principalId),
-        subjectId,
-        auditSubjectId: id,
-        auditReferenceId: order.id,
-      });
-
-      const response = await fetch(buildCommerceUrl(`/api/orders/${encodeURIComponent(id)}/cancel`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...buildProtectedBuyerActionHeaders(trustPolicy),
-        },
-        body: JSON.stringify({
+        action: 'buyer.order.cancel',
+        resourceId: id,
+        idempotencyKey: `buyer-order-cancel:${id}`,
+        payload: {
+          order_id: id,
           reason: 'Buyer requested cancellation',
-          trust_policy: trustPolicy,
-        }),
+        },
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Cancel order failed: ${response.status}`);
+      if (!executed.execution) {
+        throw new Error(
+          executed.decision === 'need_approval'
+            ? 'Order cancellation requires exact approval.'
+            : 'Order cancellation was denied by AgentGuard.',
+        );
       }
-
-      const data = await response.json();
-      setOrder(data.order ?? order);
+      setOrder(orderFromCommerceExecution(executed.execution) ?? await getCommerceOrder(id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel order');
     } finally {
@@ -188,69 +163,34 @@ export function OrderDetailPage(): JSX.Element {
     }
   }
 
-  function handleCreateIssue() {
+  async function handleCreateIssue() {
     if (!order || !issueDescription.trim()) {
       return;
     }
-    if (!elevatedTrustSatisfied(trust.state, principalId)) {
-      setError(trust.reason || 'Verified buyer trust is required before creating support cases.');
-      return;
-    }
-
-    if (COMMERCE_DEMO_MODE) {
-      const supportCase = createVerifiedLocalSupportCase(
-        {
+    try {
+      const executed = await executeBuyerProtectedAction({
+        walletAddress,
+        action: 'buyer.return.submit',
+        resourceId: order.id,
+        idempotencyKey: `buyer-return:${order.id}:${crypto.randomUUID()}`,
+        payload: {
           order_id: order.id,
-          issue_type: issueType,
+          reason: issueType,
           description: issueDescription.trim(),
-          evidence_links: [],
         },
-        trust.state,
-      );
-      setSupportCases((current) => [supportCase, ...current]);
-      setIssueDescription('');
-      return;
-    }
-
-    const supportCase = buildLocalSupportCase({
-      order_id: order.id,
-      issue_type: issueType,
-      description: issueDescription.trim(),
-      evidence_links: [],
-    });
-
-    const trustPolicy = buildProtectedBuyerActionPolicy({
-      action: 'dispute_creation',
-      walletAddress,
-      trustState: effectiveElevatedTrustState(trust.state, principalId),
-      subjectId,
-      auditSubjectId: order.id,
-      auditReferenceId: supportCase.case_id,
-    });
-
-    void fetch(buildCommerceUrl(`/api/orders/${encodeURIComponent(order.id)}/support-cases`), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...buildProtectedBuyerActionHeaders(trustPolicy),
-      },
-      body: JSON.stringify({
-        support_case: supportCase,
-        trust_policy: trustPolicy,
-      }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Create support case failed: ${response.status}`);
-        }
-        const data = await response.json();
-        setSupportCases((current) => [data.support_case ?? supportCase, ...current]);
-        setIssueDescription('');
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to create support case');
       });
+      if (!executed.execution) {
+        throw new Error(
+          executed.decision === 'need_approval'
+            ? 'Support request requires exact approval.'
+            : 'Support request was denied by AgentGuard.',
+        );
+      }
+      setSupportCases(await listCommerceBuyerIssues(order.id));
+      setIssueDescription('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create support case');
+    }
   }
 
   if (loading) {
@@ -283,9 +223,6 @@ export function OrderDetailPage(): JSX.Element {
   }
 
   const canCancel = isCancellable(order.status);
-  const protectedActionsBlocked =
-    !trust.loading && !elevatedTrustSatisfied(trust.state, principalId);
-
   return (
     <div className="space-y-8">
       <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/orders')}>
@@ -298,7 +235,9 @@ export function OrderDetailPage(): JSX.Element {
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             Order detail
           </div>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Order #{order.id}</h1>
+          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
+            Order reference {customerReference(order.id)}
+          </h1>
           <p className="text-sm text-muted-foreground">
             Created on{' '}
             {new Date(order.createdAt).toLocaleDateString('en-US', {
@@ -323,7 +262,7 @@ export function OrderDetailPage(): JSX.Element {
           ) : null}
           {order.payment?.transactionId ? (
             <Badge variant="outline" className="rounded-full font-mono" data-testid="order-receipt-id">
-              Receipt {order.payment.transactionId}
+              Payment reference {customerReference(order.payment.transactionId)}
             </Badge>
           ) : null}
           {canCancel ? (
@@ -332,7 +271,7 @@ export function OrderDetailPage(): JSX.Element {
               variant="outline"
               className="rounded-full"
               onClick={() => void handleCancel()}
-              disabled={cancelling || protectedActionsBlocked}
+              disabled={cancelling}
             >
               {cancelling ? 'Cancelling...' : 'Cancel order'}
             </Button>
@@ -437,7 +376,7 @@ export function OrderDetailPage(): JSX.Element {
                   variant="outline"
                   className="rounded-full"
                   onClick={handleCreateIssue}
-                  disabled={!issueDescription.trim() || protectedActionsBlocked}
+                  disabled={!issueDescription.trim()}
                 >
                   Create support case
                 </Button>
@@ -500,35 +439,67 @@ export function OrderDetailPage(): JSX.Element {
         </div>
 
         <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
-          <Card className="border-border/70 bg-card/90" data-testid="order-payment-card">
+          <Card className="border-border/70 bg-card/90" data-testid="order-authorization-card">
             <CardHeader>
-              <CardTitle className="text-xl">Payment</CardTitle>
+              <CardTitle className="text-xl">Order authorization</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Status</span>
-                <span className="font-medium" data-testid="order-payment-status">
-                  {order.payment?.status === 'PAID' || order.payment?.status === 'completed'
-                    ? 'PAID'
-                    : order.payment?.status || 'NOT-PAID'}
+                <span className="text-muted-foreground">AgentGuard</span>
+                <span className="font-medium">
+                  {order.authorization?.receiptReference
+                    ? receiptVerified == null
+                      ? 'Checking signed reference'
+                      : receiptVerified
+                        ? 'Authorized · signed reference verified'
+                        : 'Authorized · verification failed'
+                    : 'Authorization evidence unavailable'}
                 </span>
               </div>
-              {order.payment?.amount ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Seller</span>
+                <span>{sellerDisplayName(order.provider?.name, order.provider?.id)}</span>
+              </div>
+              {order.quote?.total ? (
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Amount</span>
+                  <span className="text-muted-foreground">Order total</span>
                   <span>
-                    {order.payment.amount.currency} {order.payment.amount.value}
+                    {order.quote.total.currency} {order.quote.total.value}
                   </span>
                 </div>
               ) : null}
-              {order.payment?.transactionId ? (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Receipt</span>
-                  <span className="font-mono" data-testid="order-payment-receipt">
-                    {order.payment.transactionId}
-                  </span>
-                </div>
-              ) : null}
+              {order.authorization ? (
+                <>
+                  <div className="space-y-1 rounded-3xl bg-muted/70 px-4 py-3">
+                    <div className="font-medium">Why it was authorized</div>
+                    <p className="text-muted-foreground">{order.authorization.reason}</p>
+                  </div>
+                  {order.authorization.receiptReference ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">Authorization reference</span>
+                      <span className="quant">
+                        {customerReference(order.authorization.receiptReference)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {order.authorization.approvalReference ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">One-time approval</span>
+                      <span className="quant">
+                        {customerReference(order.authorization.approvalReference)}
+                      </span>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-muted-foreground">
+                  This order does not include a signed authorization reference. Contact support
+                  before relying on it as proof of authorization.
+                </p>
+              )}
+              <p className="text-muted-foreground">
+                Payment details are not collected in this order step.
+              </p>
             </CardContent>
           </Card>
 

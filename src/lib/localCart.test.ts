@@ -4,6 +4,8 @@ import {
   getLocalSession,
   LOCAL_CART_CHANGED_EVENT,
   removeLocalItem,
+  updateLocalBuyer,
+  updateLocalDeliveryAddress,
 } from './localCart';
 
 describe('local cart synchronization', () => {
@@ -36,5 +38,33 @@ describe('local cart synchronization', () => {
     ).toEqual([sessionId, sessionId]);
     expect(getLocalSession(sessionId).items).toEqual([]);
     window.removeEventListener(LOCAL_CART_CHANGED_EVENT, listener);
+  });
+
+  it('preserves an in-progress delivery PIN across billing refreshes', () => {
+    const sessionId = 'checkout-address';
+    getLocalSession(sessionId);
+    updateLocalDeliveryAddress(sessionId, {
+      line1: '12 Market Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+      country: 'IND',
+    });
+    updateLocalBuyer(sessionId, {
+      name: 'Asha Rao',
+      email: 'asha@example.com',
+      phone: '+919876543210',
+      taxId: '29ABCDE1234F1Z5',
+    });
+
+    expect(getLocalSession(sessionId).buyer).toMatchObject({
+      street: '12 Market Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      pincode: '411001',
+      country: 'IND',
+      name: 'Asha Rao',
+      taxId: '29ABCDE1234F1Z5',
+    });
   });
 });

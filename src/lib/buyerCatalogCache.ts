@@ -8,18 +8,122 @@ import type { OndcCatalogItem } from './ondc/protocolClient';
 const byId = new Map<string, UCPItem>();
 const CACHE_CHANGED_EVENT = 'buyer-catalog-cache-changed';
 
-function itemsMatchingQuery(query: string): UCPItem[] {
-  const tokens = query
+const BROWSE_QUERIES = new Set(['all', 'food', 'foods', 'groceries', 'grocery', 'products']);
+const SEARCH_STOP = new Set([
+  'the',
+  'and',
+  'for',
+  'with',
+  'from',
+  'pack',
+  'packet',
+  'kg',
+  'gms',
+  'gram',
+  'grams',
+  'litre',
+  'liter',
+  'ml',
+]);
+
+/** Tokenize for strict relevance — keep short product tokens like "tv". */
+export function searchQueryTokens(query: string): string[] {
+  return query
     .trim()
     .toLowerCase()
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
+    .match(/[a-z0-9]+/g)
+    ?.filter((token) => !SEARCH_STOP.has(token) && token.length >= 2) ?? [];
+}
+
+function haystackForItem(item: UCPItem): string {
+  return [
+    item.name,
+    item.descriptor?.name,
+    item.description,
+    item.descriptor?.short_desc,
+    item.category,
+    item._provider,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function titleForItem(item: UCPItem): string {
+  return [item.name, item.descriptor?.name].filter(Boolean).join(' ').toLowerCase();
+}
+
+function itemMatchesSearchTokens(item: UCPItem, query: string, tokens: string[]): boolean {
+  const title = titleForItem(item);
+  const haystack = haystackForItem(item);
+  const normalized = query.trim().toLowerCase();
+  // Title-first: "rice" must not hit Poha via "flattened rice" in description.
+  if (normalized && title.includes(normalized)) return true;
+  if (!tokens.length) return false;
+  if (tokens.every((token) => title.includes(token))) return true;
+  if (tokens.length >= 2 && tokens.every((token) => haystack.includes(token))) return true;
+  return false;
+}
+
+function itemsMatchingQuery(query: string): UCPItem[] {
   const items = listBuyerCatalogItems();
-  if (!tokens.length) return items;
+  const normalized = query.trim().toLowerCase();
+  if (!normalized || BROWSE_QUERIES.has(normalized)) return items;
+  const tokens = searchQueryTokens(query);
+  return items.filter((item) => itemMatchesSearchTokens(item, query, tokens));
+}
+
+export function filterBuyerItemsForQuery(items: UCPItem[], query: string): UCPItem[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized || BROWSE_QUERIES.has(normalized)) return items;
+
+  const tokens = searchQueryTokens(query);
+  if (!tokens.length) return [];
+
+  return items.filter((item) => itemMatchesSearchTokens(item, query, tokens));
+}
+
+/** Buyer SearchBar lanes → accepted item.category / demo category_id values. */
+const CATEGORY_ALIASES: Record<string, readonly string[]> = {
+  grocery: ['grocery', 'foodgrains', 'food', 'f&b', 'staples'],
+  electronics: ['electronics', 'appliance', 'appliances', 'consumer electronics'],
+  fashion: ['fashion', 'apparel', 'clothing'],
+  restaurant: ['restaurant', 'f&b', 'food service'],
+};
+
+/**
+ * Enforce the selected results category. Grocery must not surface a TV that was
+ * mis-tagged or left on the default Grocery category_id.
+ */
+const ELECTRONICS_TITLE = /\b(tv|television|laptop|phone|mobile|headphone|earbud|camera)\b/i;
+const FASHION_TITLE = /\b(shirt|saree|jeans|kurta|dress|apparel)\b/i;
+
+export function filterBuyerItemsForCategory(items: UCPItem[], category: string): UCPItem[] {
+  const wanted = category.trim().toLowerCase();
+  // Category lanes are exclusive — do not treat "grocery" as a browse-all query.
+  if (!wanted || wanted === 'all') return items;
+  const aliases = CATEGORY_ALIASES[wanted] ?? [wanted];
   return items.filter((item) => {
-    const haystack = `${item.name || ''} ${item.descriptor?.name || ''}`.toLowerCase();
-    return tokens.some((token) => haystack.includes(token));
+    const title = titleForItem(item);
+    // Defense for mis-tagged Seller SKUs (TV published under Grocery).
+    if (wanted === 'grocery' && (ELECTRONICS_TITLE.test(title) || FASHION_TITLE.test(title))) {
+      return false;
+    }
+    if (wanted === 'electronics' && ELECTRONICS_TITLE.test(title)) return true;
+    if (wanted === 'fashion' && FASHION_TITLE.test(title)) return true;
+    const itemCat = String(item.category || '').trim().toLowerCase();
+    // Legacy fixtures with no category stay grocery-only.
+    if (!itemCat) return wanted === 'grocery';
+    return aliases.some((alias) => itemCat === alias || itemCat.includes(alias));
   });
+}
+
+export function filterBuyerSearchResults(
+  items: UCPItem[],
+  query: string,
+  category: string,
+): UCPItem[] {
+  return filterBuyerItemsForCategory(filterBuyerItemsForQuery(items, query), category);
 }
 
 export function mapOndcCatalogItemToBuyerItem(item: OndcCatalogItem): UCPItem {
@@ -37,6 +141,15 @@ export function mapOndcCatalogItemToBuyerItem(item: OndcCatalogItem): UCPItem {
       short_desc: String(item.provider_name || item.bpp_id || ''),
     },
     _provider: item.provider_name || item.bpp_id,
+    provider: item.provider_name
+      ? { id: String(item.bpp_id || item.provider_name), name: item.provider_name }
+      : undefined,
+    deliveryEstimate:
+      typeof item.delivery_estimate === 'string' ? item.delivery_estimate : undefined,
+    returnPolicy: typeof item.return_policy === 'string' ? item.return_policy : undefined,
+    deliveryAreas: Array.isArray(item.delivery_areas)
+      ? item.delivery_areas.map(String).filter(Boolean)
+      : undefined,
   };
 }
 
@@ -99,7 +212,7 @@ export function lookupBuyerCatalogByQuery(query: string): UCPItem | null {
       for (const token of q.split(/\s+/).filter((t) => t.length > 2)) {
         if (name.includes(token)) score += 3;
       }
-      if (/agentguard|preprod|ondcseller|aadharcha/i.test(name + provider)) score += 2;
+      if (/agentguard|ondcseller|aadharcha/i.test(name + provider)) score += 2;
       return { item, score };
     })
     .filter((row) => row.score > 0)

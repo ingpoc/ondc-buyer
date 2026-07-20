@@ -28,6 +28,7 @@ export interface UCPSession {
     name: string;
     email: string;
     phone: string;
+    taxId?: string;
     contact?: {
       email?: string;
       phone?: string;
@@ -64,6 +65,10 @@ export interface UCPItem {
   provider?: BecknProvider;
   rating?: BecknRating;
   quantity?: number;
+  deliveryEstimate?: string;
+  returnPolicy?: string;
+  imageCaption?: string;
+  deliveryAreas?: string[];
 }
 
 export interface UCPCatalog {
@@ -226,6 +231,14 @@ export interface UCPOrder {
   fulfillment?: UCPFulfillment;
   fulfillments?: UCPFulfillment[];
   payment?: UCPPayment;
+  authorization?: {
+    decision: 'allow' | 'deny' | string;
+    reason: string;
+    receiptReference?: string;
+    approvalReference?: string;
+    amountInr?: number;
+    recordedAt?: string;
+  };
   cancellation?: {
     cancelledBy: string;
     reason?: string;

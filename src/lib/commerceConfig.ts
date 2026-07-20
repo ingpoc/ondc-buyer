@@ -40,9 +40,8 @@ const commerceConfig = resolveCommerceConfig(import.meta.env);
 export const COMMERCE_DEMO_MODE = commerceConfig.demoMode;
 export const COMMERCE_API_BASE = commerceConfig.apiBase;
 
-/** Exchange label: Simulated only when demo mode is on; live builds show ONDC network. */
 export const COMMERCE_EXCHANGE_LABEL = COMMERCE_DEMO_MODE
-  ? 'Simulated exchange'
+  ? 'Local exchange'
   : 'ONDC network';
 
 export function buildCommerceUrl(endpoint: string): string {

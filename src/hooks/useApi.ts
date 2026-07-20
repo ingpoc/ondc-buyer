@@ -1,8 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
-import { rememberBuyerCatalogItems, rememberOndcCatalogItems } from '../lib/buyerCatalogCache';
+import {
+  filterBuyerSearchResults,
+  lookupBuyerCatalogItem,
+  rememberBuyerCatalogItems,
+  rememberOndcCatalogItems,
+} from '../lib/buyerCatalogCache';
 import { resolveMockBuyerEndpoint } from '../lib/mockSearch';
 import { getCommerceItem, searchCommerceItems } from '../lib/commerceClient';
+import { isLocalBrowserHost } from '../lib/loopback';
 import {
   dispatchBuyerSearch,
   isOndcNetworkSearchReady,
@@ -33,6 +39,24 @@ export function useApi<T>(
     setError(null);
 
     try {
+      if (endpoint.startsWith('/api/catalog/products/')) {
+        const id = endpoint.split('/').pop()?.trim();
+        if (!id) throw new Error('Product not found.');
+
+        const cached = lookupBuyerCatalogItem(id);
+        if (cached) {
+          if (runId !== runIdRef.current) return;
+          setData(cached as T);
+          return;
+        }
+
+        const item = await getCommerceItem(id);
+        if (runId !== runIdRef.current) return;
+        rememberBuyerCatalogItems([item]);
+        setData(item as T);
+        return;
+      }
+
       if (COMMERCE_DEMO_MODE) {
         try {
           if (endpoint.startsWith('/api/search?')) {
@@ -43,13 +67,6 @@ export function useApi<T>(
             if ((demo.items?.length ?? 0) > 0) {
               if (runId !== runIdRef.current) return;
               setData(demo as T);
-              return;
-            }
-          } else if (endpoint.startsWith('/api/catalog/products/')) {
-            const id = endpoint.split('/').pop();
-            if (id) {
-              if (runId !== runIdRef.current) return;
-              setData((await getCommerceItem(id)) as T);
               return;
             }
           }
@@ -67,8 +84,27 @@ export function useApi<T>(
         const [, query = ''] = endpoint.split('?');
         const params = new URLSearchParams(query);
         const q = params.get('q') || params.get('query') || 'grocery';
+        const category = (params.get('category') || 'grocery').trim().toLowerCase();
         let sharedTxn = (params.get('ondc_txn') || '').trim();
-        if (await isOndcNetworkSearchReady()) {
+        // Samantha early-nav lands without ondc_txn. If Seller-published offers
+        // already match, paint once — do not wait/dispatch network (that caused
+        // TV → spinner → TV when the tool later skipped a second navigate).
+        if (!sharedTxn) {
+          const demoQuick = await searchCommerceItems(q);
+          if (runId !== runIdRef.current) return;
+          const demoQuickItems = filterBuyerSearchResults(demoQuick.items ?? [], q, category);
+          if (demoQuickItems.length > 0) {
+            rememberBuyerCatalogItems(demoQuickItems);
+            setData({
+              items: demoQuickItems,
+              totalCount: demoQuickItems.length,
+              __source: 'demo-commerce',
+            } as T);
+            return;
+          }
+        }
+        const shouldUseNetwork = Boolean(sharedTxn) || !isLocalBrowserHost();
+        if (shouldUseNetwork && await isOndcNetworkSearchReady()) {
           if (runId !== runIdRef.current) return;
           // Early orb nav lands without ondc_txn; tool refines URL after shared dispatch.
           if (!sharedTxn && typeof window !== 'undefined') {
@@ -92,7 +128,7 @@ export function useApi<T>(
           }
           const applyItems = (items: OndcCatalogItem[], transactionId: string) => {
             if (runId !== runIdRef.current) return;
-            const mapped = rememberOndcCatalogItems(items);
+            const mapped = filterBuyerSearchResults(rememberOndcCatalogItems(items), q, category);
             setData({
               items: mapped,
               totalCount: mapped.length,
@@ -116,13 +152,28 @@ export function useApi<T>(
             onPartial: (items) => applyItems(items, sharedTxn),
           });
           if (runId !== runIdRef.current) return;
-          applyItems(collected.items, collected.transaction_id);
-          return;
+          const networkItems = filterBuyerSearchResults(
+            rememberOndcCatalogItems(collected.items),
+            q,
+            category,
+          );
+          if (networkItems.length > 0) {
+            applyItems(collected.items, collected.transaction_id);
+            return;
+          }
+          // Empty network catalog must still surface Seller-published demo-commerce
+          // markers (TV/oil/atta) — otherwise Samantha claims HIT while the grid
+          // shows 0 matches.
         }
         const demo = await searchCommerceItems(q);
         if (runId !== runIdRef.current) return;
-        rememberBuyerCatalogItems(demo.items ?? []);
-        setData({ ...demo, __source: 'demo-commerce' } as T);
+        const demoItems = filterBuyerSearchResults(demo.items ?? [], q, category);
+        rememberBuyerCatalogItems(demoItems);
+        setData({
+          items: demoItems,
+          totalCount: demoItems.length,
+          __source: 'demo-commerce',
+        } as T);
         return;
       }
 

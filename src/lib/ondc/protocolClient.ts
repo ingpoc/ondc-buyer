@@ -118,7 +118,7 @@ export async function fetchOndcAdapterStatus(): Promise<OndcAdapterStatus> {
   return (body?.data ?? body) as OndcAdapterStatus;
 }
 
-/** True when gateway can dispatch signed PreProd search. */
+/** True when the gateway can dispatch signed ONDC search. */
 let readyCache: { at: number; value: boolean } | null = null;
 
 export async function isOndcNetworkSearchReady(): Promise<boolean> {
@@ -186,7 +186,7 @@ export async function ondcSearch(input: {
   return (body?.data ?? body) as OndcSearchResult;
 }
 
-/** One user ask → one PreProd fanout. Share dispatch across tool + ResultsPage. */
+/** One user ask → one network fanout. Share dispatch across tool + ResultsPage. */
 type RecentDispatch = {
   at: number;
   transactionId: string;
@@ -245,6 +245,9 @@ export type OndcCatalogItem = {
   description?: string;
   price_inr?: string | number;
   provider_name?: string;
+  delivery_estimate?: string;
+  return_policy?: string;
+  delivery_areas?: string[];
   bpp_id?: string;
   transaction_id?: string;
   [key: string]: unknown;
@@ -356,7 +359,7 @@ export async function ondcCollectFromTxn(
 /** Dispatch search then poll inbox for on_search catalogs.
  *
  * When `preferBppId` is set, keep polling until that BPP appears or attempts
- * exhaust (PreProd fanout variance — other BPPs alone are not a stop signal).
+ * exhaust (network fanout variance — other BPPs alone are not a stop signal).
  * Prefer `ondcSearch` (tool) + `ondcCollectFromTxn` (ResultsPage) to avoid double poll.
  */
 export async function ondcSearchAndCollect(
@@ -384,7 +387,7 @@ export async function ondcSearchAndCollect(
   };
 }
 
-/** Our Seller BPP id on PreProd — prefer in discovery polls (fanout may omit). */
+/** Our Seller BPP id — prefer it in discovery polls because fanout may omit it. */
 export const OUR_BPP_ID = 'ondcseller.aadharcha.in';
 
 export type OndcOrderActionInput = {

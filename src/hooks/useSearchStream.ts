@@ -175,14 +175,16 @@ export function useSearchStream(): SearchStreamResult {
             params.query?.trim() || params.category || 'grocery',
             { city: 'std:080', pollMs: 2000, attempts: 10, preferBppId: OUR_BPP_ID },
           );
-          setState({
-            status: 'complete',
-            items: mapOndcCatalogToBeckn(collected.items),
-            hasMore: false,
-            error: null,
-            isStreaming: false,
-          });
-          return;
+          if (collected.items.length > 0) {
+            setState({
+              status: 'complete',
+              items: mapOndcCatalogToBeckn(collected.items),
+              hasMore: false,
+              error: null,
+              isStreaming: false,
+            });
+            return;
+          }
         }
         const demo = await searchCommerceItems(params.query || undefined);
         setState({

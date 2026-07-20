@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Search } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -59,9 +59,19 @@ export function SearchBar({
     setQuery(normalizeQuery(defaultQuery));
   }, [defaultQuery]);
 
+  function submitSearch(): void {
+    onSearch(category, normalizeQuery(query));
+  }
+
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    onSearch(category, normalizeQuery(query));
+    submitSearch();
+  }
+
+  function handleQueryKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    submitSearch();
   }
 
   const searchGroupClassName = compact ? undefined : 'h-12 rounded-[1.6rem] bg-background';
@@ -106,6 +116,7 @@ export function SearchBar({
                   name="query"
                   value={query ?? ''}
                   onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={handleQueryKeyDown}
                   placeholder="Rice, meals, staples…"
                   className={searchInputClassName}
                 />
@@ -116,10 +127,10 @@ export function SearchBar({
           <Button
             type="submit"
             size="lg"
-            aria-label="Search catalog"
+            aria-label="Search groceries"
             className="w-full rounded-full lg:w-auto lg:min-w-40"
           >
-            Search
+            Search groceries
           </Button>
         </div>
       </FieldGroup>

@@ -1,4 +1,4 @@
-import { ShoppingCart, Store } from 'lucide-react';
+import { Package, ShoppingCart, Store } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card';
@@ -11,12 +11,14 @@ import {
 } from './ui/empty';
 import { Spinner } from './ui/spinner';
 import type { UCPItem } from '../types';
+import { sellerDisplayName, unitPriceLabel } from '../lib/displayText';
 
 export interface ResultGridProps {
   items: UCPItem[];
   onItemClick?: (item: UCPItem) => void;
   onAddToCart?: (item: UCPItem) => void;
   loading?: boolean;
+  deliveryArea?: string;
 }
 
 function formatPrice(item: UCPItem) {
@@ -28,6 +30,7 @@ export function ResultGrid({
   onItemClick,
   onAddToCart,
   loading,
+  deliveryArea,
 }: ResultGridProps): JSX.Element {
   if (loading) {
     return (
@@ -64,18 +67,24 @@ export function ResultGrid({
           {item.images?.[0]?.url ? (
             <button
               type="button"
-              className="block w-full overflow-hidden"
+              className="relative block w-full overflow-hidden"
               onClick={() => onItemClick?.(item)}
             >
               <img
                 src={item.images[0].url}
                 alt={item.name ?? item.descriptor?.name ?? 'Product'}
-                className="h-52 w-full object-cover"
+                className="h-32 w-full object-cover"
               />
+              {item.imageCaption ? (
+                <span className="absolute bottom-2 left-2 rounded-full bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
+                  {item.imageCaption}
+                </span>
+              ) : null}
             </button>
           ) : (
-            <div className="flex h-52 items-center justify-center bg-muted">
-              <Store className="size-8 text-muted-foreground" />
+            <div className="flex h-32 flex-col items-center justify-center gap-2 bg-gradient-to-br from-amber-50 to-orange-100 text-amber-950">
+              <Package className="size-8" />
+              <span className="text-xs font-medium">Product image not supplied</span>
             </div>
           )}
 
@@ -85,7 +94,9 @@ export function ResultGrid({
                 {item.category || 'General'}
               </Badge>
               <Badge variant="secondary" className="rounded-full">
-                {item.rating?.value ? `${item.rating.value.toFixed(1)}★` : item._provider || 'Verified seller'}
+                {item.rating?.value
+                  ? `${item.rating.value.toFixed(1)}★`
+                  : sellerDisplayName(item.provider?.name, item._provider)}
               </Badge>
             </div>
             <div className="space-y-1">
@@ -102,9 +113,42 @@ export function ResultGrid({
 
           <CardContent className="space-y-3">
             <div className="quant text-2xl font-semibold tracking-tight">{formatPrice(item)}</div>
-            <div className="text-sm text-muted-foreground">
-              Seller: {item.provider?.name || item._provider || 'Unknown provider'}
-            </div>
+            <dl className="space-y-1 text-sm text-muted-foreground">
+              <div>
+                <dt className="inline font-medium text-foreground">Seller: </dt>
+                <dd className="inline">{sellerDisplayName(item.provider?.name, item._provider)}</dd>
+              </div>
+              <div>
+                <dt className="inline font-medium text-foreground">Unit price: </dt>
+                <dd className="inline">
+                  {unitPriceLabel(
+                    item.name ?? item.descriptor?.name,
+                    item.price?.value ?? item.price?.amount,
+                    item.price?.currency,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline font-medium text-foreground">Delivery: </dt>
+                <dd className="inline">{item.deliveryEstimate || 'Estimate not supplied'}</dd>
+              </div>
+              {deliveryArea ? (
+                <div>
+                  <dt className="inline font-medium text-foreground">Service area: </dt>
+                  <dd className="inline">Delivers to {deliveryArea}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt className="inline font-medium text-foreground">Availability: </dt>
+                <dd className="inline">
+                  {typeof item.quantity === 'number' ? `${item.quantity} in stock` : 'Not supplied'}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline font-medium text-foreground">Returns: </dt>
+                <dd className="inline">{item.returnPolicy || 'Terms not supplied'}</dd>
+              </div>
+            </dl>
           </CardContent>
 
           <CardFooter className="gap-3 border-t border-border/70 pt-5">

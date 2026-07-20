@@ -1,17 +1,8 @@
 /**
- * Samantha background work — starts /api/agent/buyer without navigating to /agent.
- * Orb subscribes for completion hints; AgentChatPage may still consume a staged handoff if present.
+ * Samantha background work — starts /api/agent/buyer while the global orb
+ * remains the sole visible Buyer assistant surface.
  */
 import { runBuyerRuntimeTask } from './runBuyerRuntimeTask';
-
-export const BUYER_RUNTIME_HANDOFF_KEY = 'samantha-runtime-handoff:ondc-buyer';
-
-export type BuyerRuntimeHandoff = {
-  task: string;
-  sessionId: string;
-  context?: Record<string, unknown>;
-  createdAt: number;
-};
 
 export type BuyerRuntimeJobUpdate = {
   status: 'started' | 'completed' | 'failed' | 'busy';
@@ -40,25 +31,6 @@ function notify(update: BuyerRuntimeJobUpdate): void {
     } catch {
       /* ignore listener errors */
     }
-  }
-}
-
-export function stageBuyerRuntimeHandoff(handoff: BuyerRuntimeHandoff): void {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(BUYER_RUNTIME_HANDOFF_KEY, JSON.stringify(handoff));
-}
-
-export function consumeBuyerRuntimeHandoff(): BuyerRuntimeHandoff | null {
-  if (typeof window === 'undefined') return null;
-  const raw = window.sessionStorage.getItem(BUYER_RUNTIME_HANDOFF_KEY);
-  if (!raw) return null;
-  window.sessionStorage.removeItem(BUYER_RUNTIME_HANDOFF_KEY);
-  try {
-    const parsed = JSON.parse(raw) as BuyerRuntimeHandoff;
-    if (!parsed?.task || !parsed?.sessionId) return null;
-    return parsed;
-  } catch {
-    return null;
   }
 }
 

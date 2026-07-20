@@ -88,10 +88,29 @@ export function updateLocalBuyer(
       name: buyer.name,
       email: buyer.email,
       phone: buyer.phone,
+      taxId: buyer.taxId?.trim() || undefined,
       contact: {
         email: buyer.email,
         phone: buyer.phone,
       },
+    },
+  });
+}
+
+export function updateLocalDeliveryAddress(sessionId: string, address: UCPAddress): UCPSession {
+  const session = getLocalSession(sessionId);
+  return saveLocalSession({
+    ...session,
+    buyer: {
+      ...session.buyer,
+      name: session.buyer?.name ?? '',
+      email: session.buyer?.email ?? '',
+      phone: session.buyer?.phone ?? '',
+      street: address.line1 || address.street || '',
+      city: address.city || '',
+      state: address.state || '',
+      country: address.country || 'IND',
+      pincode: address.postalCode || address.pincode || '',
     },
   });
 }

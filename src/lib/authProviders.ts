@@ -2,7 +2,7 @@
  * Gateway /api/auth/providers — Auth0 (preferred), Google, booth demo.
  */
 import { useEffect, useState } from 'react';
-import { IDENTITY_URL } from './identityUrls';
+import { authFetchBase } from './identityUrls';
 
 export type AuthProviders = {
   auth0: boolean;
@@ -21,7 +21,7 @@ export function useAuthProviders(): AuthProviders & { loading: boolean } {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`${IDENTITY_URL}/api/auth/providers`, {
+        const res = await fetch(`${authFetchBase()}/api/auth/providers`, {
           credentials: 'include',
         });
         if (!res.ok) throw new Error('providers');

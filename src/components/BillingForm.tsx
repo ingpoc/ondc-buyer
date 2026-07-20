@@ -9,8 +9,9 @@ import {
   FieldLabel,
 } from './ui/field';
 import { Input } from './ui/input';
-import { buildCommerceUrl, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
+import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { updateLocalBuyer } from '../lib/localCart';
+import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
 
 const STORAGE_KEY = 'ondc-session-id';
 
@@ -28,7 +29,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
   const [name, setName] = useState(session?.buyer?.name || '');
   const [email, setEmail] = useState(session?.buyer?.email || '');
   const [phone, setPhone] = useState(session?.buyer?.phone || '');
-  const [taxId, setTaxId] = useState('');
+  const [taxId, setTaxId] = useState(session?.buyer?.taxId || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -38,6 +39,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
       setName(session.buyer.name || '');
       setEmail(session.buyer.email || '');
       setPhone(session.buyer.phone || '');
+      setTaxId(session.buyer.taxId || '');
     }
   }, [session]);
 
@@ -56,7 +58,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
         throw new Error('No session found');
       }
 
-      if (COMMERCE_DEMO_MODE) {
+      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
         updateLocalBuyer(sessionId, { name, email, phone, taxId });
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
@@ -89,7 +91,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
       name !== (session?.buyer?.name || '') ||
       email !== (session?.buyer?.email || '') ||
       phone !== (session?.buyer?.phone || '') ||
-      taxId !== '',
+      taxId !== (session?.buyer?.taxId || ''),
     [email, name, phone, session, taxId],
   );
 

@@ -26,6 +26,14 @@ export default defineConfig({
     strictPort: true,
     port: 43102,
     proxy: {
+      // Local browser reaches the public ONDC PreProd control plane through
+      // same-origin Vite, avoiding a production CORS exception for localhost.
+      '/ondc-control': {
+        target: 'https://gateway.aadharcha.in',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/ondc-control/, ''),
+      },
       '/api/entitlements': 'http://127.0.0.1:43104',
       '/api/agent': 'http://127.0.0.1:43104',
       // Default /api → local gateway (AgentGuard, demo-commerce, auth). Not :3001.

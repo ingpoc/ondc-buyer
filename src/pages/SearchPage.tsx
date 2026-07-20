@@ -1,11 +1,13 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bot, Search } from 'lucide-react';
 import { SearchBar } from '../components/SearchBar';
 import { useSubject, useTrustState } from '../hooks';
 import { TrustNotice } from '../components/TrustStatus';
-import { elevatedTrustSatisfied } from '../lib/trust';
+import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import { Button } from '../components/ui/button';
 import { useAuthContext } from '../contexts/AuthContext';
+import { fetchBuyerAgentGuardStatus } from '../lib/agentGuardCheckout';
 
 export function SearchPage(): JSX.Element {
   const navigate = useNavigate();
@@ -13,6 +15,20 @@ export function SearchPage(): JSX.Element {
   const trust = useTrustState(walletAddress);
   const elevatedOk = elevatedTrustSatisfied(trust.state, principalId);
   const { isAuthenticated } = useAuthContext();
+  const [checkoutLimit, setCheckoutLimit] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void fetchBuyerAgentGuardStatus(walletAddress ?? principalId)
+      .then((status) => {
+        const limits = status.mandate?.limits?.auto_approve_max_inr as
+          | Record<string, number>
+          | undefined;
+        const limit = limits?.['buyer.checkout.commit'];
+        setCheckoutLimit(Number.isFinite(Number(limit)) ? Number(limit) : null);
+      })
+      .catch(() => setCheckoutLimit(null));
+  }, [isAuthenticated, principalId, walletAddress]);
 
   function handleSearch(category: string, query: string): void {
     const normalized = String(query ?? '').trim();
@@ -24,20 +40,22 @@ export function SearchPage(): JSX.Element {
       <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
         <div className="flex flex-col gap-4">
           <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            {isAuthenticated ? 'Ask Samantha. Shop the network.' : 'Find groceries from network sellers.'}
+            {isAuthenticated ? 'Ask Samantha. Shop on ONDC.' : 'Find groceries on ONDC.'}
           </h1>
           <p className="max-w-[42ch] text-base leading-relaxed text-muted-foreground">
             {isAuthenticated
-              ? 'Samantha finds offers and follows the spending limits you choose.'
-              : 'Search sellers connected through the Open Network for Digital Commerce (ONDC).'}
+              ? 'Samantha finds offers and follows the AgentGuard spending limits you choose.'
+              : 'Browse participating sellers and sign in when you are ready to check out.'}
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
             {isAuthenticated ? (
-              <Button asChild className="rounded-full px-5 active:scale-[0.98]">
-                <Link to="/agent">
-                  <Bot data-icon="inline-start" />
-                  Ask Samantha
-                </Link>
+              <Button
+                type="button"
+                className="rounded-full px-5 active:scale-[0.98]"
+                onClick={() => window.dispatchEvent(new Event('samantha:open'))}
+              >
+                <Bot data-icon="inline-start" />
+                Ask Samantha
               </Button>
             ) : null}
             <Button
@@ -64,22 +82,40 @@ export function SearchPage(): JSX.Element {
             <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
               <dt className="text-muted-foreground">Checkout</dt>
               <dd className="font-medium text-foreground">
-                {elevatedOk ? 'Protected' : 'Locked'}
+                {elevatedOk ? 'Protected by AgentGuard' : 'Locked'}
               </dd>
             </div>
             {isAuthenticated ? (
-              <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-muted-foreground">Shopping assistant</dt>
-                <dd className="font-medium text-primary">Available</dd>
-              </div>
+              <>
+                <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
+                  <dt className="text-muted-foreground">Automatic checkout limit</dt>
+                  <dd className="quant font-medium text-foreground">
+                    {checkoutLimit == null ? 'Shown at checkout' : `INR ${checkoutLimit}`}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2">
+                  <dt className="text-muted-foreground">Above the limit</dt>
+                  <dd className="font-medium text-foreground">Ask once before checkout</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-muted-foreground">Payment details</dt>
+                  <dd className="font-medium text-foreground">Not collected here</dd>
+                </div>
+              </>
             ) : null}
           </dl>
+          {isAuthenticated ? (
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              “Authorize and place order” creates the order and reserves stock. Checkout shows the
+              exact total and approval decision before completion.
+            </p>
+          ) : null}
         </div>
       </section>
 
       {!elevatedOk || trust.error ? (
         <TrustNotice
-          state={trust.state}
+          state={effectiveElevatedTrustState(trust.state, principalId)}
           loading={trust.loading}
           error={trust.error}
           reason={isAuthenticated ? trust.reason : 'Sign in to use checkout.'}
@@ -88,12 +124,12 @@ export function SearchPage(): JSX.Element {
 
       <section id="catalog-search" className="flex flex-col gap-4">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Search the network</h2>
+          <h2 className="text-xl font-semibold tracking-tight">Search ONDC</h2>
           <p className="mt-1 max-w-[55ch] text-sm text-muted-foreground">
             {trust.loading
               ? 'Checking account access…'
               : elevatedOk
-                ? 'Signed in. Protected checkout is available.'
+                ? 'Signed in. Checkout shows the order total, spending limit, and any required approval.'
                 : 'Sign in to use checkout.'}
           </p>
         </div>
