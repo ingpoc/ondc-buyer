@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   emptySamanthaMemory,
   loadSamanthaMemoryMerged,
@@ -30,6 +30,22 @@ describe('Samantha memory principal isolation', () => {
       notes: ['private'],
     });
     expect(localStorage.length).toBe(0);
+  });
+
+  it('notifies an open settings view after authenticated memory changes', () => {
+    const listener = vi.fn();
+    window.addEventListener('buyer-samantha-memory-changed', listener);
+
+    saveSamanthaMemory('principal:demo:buyer', {
+      ...emptySamanthaMemory(),
+      preferences: ['Use unpolished groceries'],
+    });
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(loadSamanthaMemoryMerged('principal:demo:buyer').preferences).toEqual([
+      'Use unpolished groceries',
+    ]);
+    window.removeEventListener('buyer-samantha-memory-changed', listener);
   });
 });
 

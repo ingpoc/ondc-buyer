@@ -120,6 +120,12 @@ export function BuyerConfigPage() {
   }, [refresh]);
 
   useEffect(() => {
+    const refreshMemory = () => setMemory(loadSamanthaMemoryMerged(subjectId));
+    window.addEventListener('buyer-samantha-memory-changed', refreshMemory);
+    return () => window.removeEventListener('buyer-samantha-memory-changed', refreshMemory);
+  }, [subjectId]);
+
+  useEffect(() => {
     const buyer = session?.buyer;
     const savedArea = loadSavedDeliveryArea(subjectId);
     if (!buyer && !savedArea) return;
@@ -341,7 +347,7 @@ export function BuyerConfigPage() {
       {!subjectId ? (
         <Card>
           <CardContent className="py-4 text-sm text-muted-foreground">
-            Sign in to bind AgentGuard and Samantha memory to your principal.
+            Sign in to keep your shopping permissions and Samantha preferences with your account.
           </CardContent>
         </Card>
       ) : null}
@@ -389,9 +395,7 @@ export function BuyerConfigPage() {
                     Account
                   </p>
                   <p className="font-medium">{principalLabel}</p>
-                  {subjectId ? (
-                    <p className="break-all font-mono text-[11px] text-muted-foreground">{subjectId}</p>
-                  ) : null}
+                  {subjectId ? <p className="text-xs text-muted-foreground">Signed-in account</p> : null}
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -664,7 +668,7 @@ export function BuyerConfigPage() {
                 ) : null}
                 {receipts.length === 0 ? (
                   <p className="text-muted-foreground">
-                    No protected actions recorded for this principal.
+                    No protected actions recorded for this account.
                   </p>
                 ) : (
                   <ul className="space-y-2">

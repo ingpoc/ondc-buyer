@@ -5,9 +5,19 @@ import { buildAgentControlPlaneUrl } from './agentControlPlane';
 
 export type AgentStreamHandlers = {
   onDelta?: () => void;
-  onResult?: (content: string) => Promise<void> | void;
+  onResult?: (content: string, outcome?: VerifiedRuntimeOutcome) => Promise<void> | void;
   onError?: (error: string) => void;
   onDone?: () => void;
+};
+
+export type VerifiedRuntimeOutcome = {
+  status: 'completed';
+  summary: string;
+  executed_tools: string[];
+  postcondition: {
+    verified: true;
+    evidence: string;
+  };
 };
 
 export async function consumeAgentSseStream(
@@ -45,11 +55,16 @@ export async function consumeAgentSseStream(
       if (!data || data === '[DONE]') continue;
 
       try {
-        const event = JSON.parse(data) as { type?: string; content?: string; error?: string };
+        const event = JSON.parse(data) as {
+          type?: string;
+          content?: string;
+          error?: string;
+          outcome?: VerifiedRuntimeOutcome;
+        };
         if (event.type === 'assistant_delta') {
           handlers.onDelta?.();
         } else if (event.type === 'result' && typeof event.content === 'string') {
-          await handlers.onResult?.(event.content);
+          await handlers.onResult?.(event.content, event.outcome);
         } else if (event.type === 'error' && typeof event.error === 'string') {
           handlers.onError?.(event.error);
         }

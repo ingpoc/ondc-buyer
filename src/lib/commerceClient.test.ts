@@ -3,6 +3,7 @@ import {
   listCommerceBuyerOrders,
   mapDemoItemToBuyerItem,
   mapDemoOrderToBuyerOrder,
+  orderFromCommerceExecution,
   type DemoCommerceOrder,
 } from './commerceClient';
 
@@ -54,7 +55,7 @@ describe('mapDemoOrderToBuyerOrder', () => {
       quantity: 2,
       amount_inr: 178,
       status: 'paid',
-      payment: { status: 'succeeded' },
+      payment: { status: 'succeeded', amount_inr: 178, reference_id: 'sandbox:pay-1' },
       authorization: {
         decision: 'allow',
         reason_code: 'exact_approval',
@@ -85,7 +86,11 @@ describe('mapDemoOrderToBuyerOrder', () => {
       postalCode: '411001',
     });
     expect(mapped.fulfillment?.providerName).toBeUndefined();
-    expect(mapped.payment).toBeUndefined();
+    expect(mapped.payment).toMatchObject({
+      status: 'completed',
+      amount: { currency: 'INR', value: '178.00' },
+      transactionId: 'sandbox:pay-1',
+    });
     expect(mapped.provider).toMatchObject({ name: 'Fresh Farm Foods', verified: true });
     expect(mapped.authorization).toMatchObject({
       decision: 'allow',
@@ -94,6 +99,30 @@ describe('mapDemoOrderToBuyerOrder', () => {
       amountInr: 178,
     });
     expect(mapped.authorization?.reason).toContain('Exact one-time approval');
+  });
+
+  it.each([
+    ['failed', 'failed'],
+    ['unknown', 'unknown'],
+    ['pending', 'pending'],
+    ['reconciled', 'reconciled'],
+  ] as const)('preserves a %s payment as %s', (source, expected) => {
+    const mapped = mapDemoOrderToBuyerOrder({
+      order_id: `order-${source}`,
+      transaction_id: `txn-${source}`,
+      message_id: `msg-${source}`,
+      buyer_id: 'buyer-1',
+      seller_id: 'seller-1',
+      item_id: 'item-1',
+      item_version: 1,
+      quantity: 1,
+      amount_inr: 178,
+      status: 'created',
+      payment: { status: source, amount_inr: 178 },
+      created_at: '2026-07-16T12:00:00Z',
+      updated_at: '2026-07-16T12:00:00Z',
+    });
+    expect(mapped.payment?.status).toBe(expected);
   });
 });
 
@@ -112,5 +141,30 @@ describe('Buyer commerce read boundary', () => {
       expect.stringMatching(/\/api\/demo-commerce\/buyer\/orders$/),
       expect.objectContaining({ credentials: 'include' }),
     );
+  });
+});
+
+describe('CommerceV1 execution adapter', () => {
+  it('accepts the durable paise order shape returned by AgentGuard', () => {
+    const mapped = orderFromCommerceExecution({
+      order: {
+        order_id: 'order-v1',
+        seller_id: 'seller-1',
+        landed_total_paise: 8_900,
+        status: 'paid',
+        created_at: '2026-07-22T00:00:00Z',
+      },
+      payment_attempt: {
+        payment_attempt_id: 'payment-v1',
+        amount_paise: 8_900,
+        status: 'succeeded',
+      },
+    });
+
+    expect(mapped).toMatchObject({
+      id: 'order-v1',
+      quote: { total: { currency: 'INR', value: '89.00' } },
+      payment: { status: 'completed', transactionId: 'payment-v1' },
+    });
   });
 });

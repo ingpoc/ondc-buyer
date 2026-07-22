@@ -251,13 +251,27 @@ export function OrderDetailPage(): JSX.Element {
           <Badge variant="secondary" className={`rounded-full ${statusClass(order.status)}`}>
             {getOrderStatusLabel(order.status)}
           </Badge>
-          {order.payment?.status === 'PAID' || order.payment?.status === 'completed' ? (
+          {order.payment ? (
             <Badge
               variant="secondary"
-              className="rounded-full bg-emerald-100 text-emerald-900"
-              data-testid="order-payment-paid"
+              className={`rounded-full ${
+                order.payment.status === 'PAID' || order.payment.status === 'completed' || order.payment.status === 'reconciled'
+                  ? 'bg-emerald-100 text-emerald-900'
+                  : order.payment.status === 'failed'
+                    ? 'bg-rose-100 text-rose-900'
+                    : 'bg-amber-100 text-amber-950'
+              }`}
+              data-testid={`order-payment-${order.payment.status}`}
             >
-              Paid
+              {order.payment.status === 'PAID' || order.payment.status === 'completed'
+                ? 'Simulated payment succeeded'
+                : order.payment.status === 'reconciled'
+                  ? 'Simulated payment reconciled'
+                  : order.payment.status === 'failed'
+                    ? 'Simulated payment failed'
+                    : order.payment.status === 'unknown'
+                      ? 'Simulated payment status unknown'
+                      : 'Simulated payment pending'}
             </Badge>
           ) : null}
           {order.payment?.transactionId ? (

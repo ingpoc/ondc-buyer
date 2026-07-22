@@ -198,7 +198,7 @@ export interface UCPPayment {
     | 'netbanking'
     | 'wallet'
     | 'cod';
-  status: 'PAID' | 'NOT-PAID' | 'completed' | 'failed';
+  status: 'PAID' | 'NOT-PAID' | 'completed' | 'failed' | 'pending' | 'unknown' | 'reconciled';
   amount?: {
     currency: string;
     value: string;

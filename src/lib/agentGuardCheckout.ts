@@ -9,6 +9,7 @@ import { TRUST_API_URL } from './identityUrls';
 
 export interface BuyerCheckoutDecision {
   decision: 'allow' | 'need_approval' | 'deny';
+  decision_id: string;
   reason: string;
   approval?: { approval_id: string; amount_inr: number } | null;
   receipt?: { receipt_id: string; outcome: string } | null;
@@ -39,59 +40,38 @@ function walletField(walletAddress?: string | null): Record<string, string> {
   return { wallet_address: walletAddress };
 }
 
-function checkoutPayload(params: {
-  walletAddress?: string | null;
-  subjectId?: string | null;
-  amountInr: number;
-  itemId?: string;
-  itemName?: string;
-  sellerName?: string;
-  quantity?: number;
-  deliveryAddress?: Record<string, unknown>;
-}) {
-  return {
-    item_id: params.itemId,
-    item_title: params.itemName,
-    seller_name: params.sellerName,
-    quantity: params.quantity ?? 1,
-    buyer_id: params.subjectId || params.walletAddress || 'anonymous',
-    amount_inr: params.amountInr,
-    delivery_address: params.deliveryAddress,
-  };
-}
-
 /** Evaluate elevated checkout; consume approval if already issued. */
 export async function evaluateBuyerCheckout(params: {
   walletAddress?: string | null;
-  subjectId?: string | null;
   amountInr: number;
-  sessionId: string;
-  itemId?: string;
-  itemName?: string;
-  sellerName?: string;
-  quantity?: number;
-  deliveryAddress?: Record<string, unknown>;
+  quoteId: string;
+  correlationId: string;
 }): Promise<BuyerCheckoutDecision> {
   const response = await fetch(`${TRUST_API_URL}/api/agentguard/actions/evaluate`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Correlation-ID': params.correlationId,
+    },
     body: JSON.stringify({
       ...walletField(params.walletAddress),
       action: LEGACY_ACTION_ALIASES.checkout,
       amount_inr: params.amountInr,
-      resource_id: params.sessionId,
-      payload: checkoutPayload(params),
+      resource_id: params.quoteId,
+      payload: { quote_id: params.quoteId },
     }),
   });
   const data = await parseData<{
     decision: BuyerCheckoutDecision['decision'];
+    decision_id: string;
     reason: string;
     approval: { approval_id: string; amount_inr: number } | null;
     receipt: { receipt_id: string; outcome: string } | null;
   }>(response);
   return {
     decision: data.decision,
+    decision_id: data.decision_id,
     reason: data.reason,
     approval: data.approval,
     receipt: data.receipt,
@@ -120,29 +100,33 @@ export async function consumeBuyerCheckoutApproval(params: {
 /** Preferred mutation boundary for checkout commit. */
 export async function executeBuyerCheckout(params: {
   walletAddress?: string | null;
-  subjectId?: string | null;
-  amountInr: number;
-  sessionId: string;
+  quoteId: string;
+  decisionId: string;
+  correlationId: string;
   approvalId?: string;
-  itemId?: string;
-  itemName?: string;
-  sellerName?: string;
-  quantity?: number;
-  deliveryAddress?: Record<string, unknown>;
   idempotencyKey?: string;
+  paymentOutcome?: 'succeeded' | 'failed' | 'unknown';
 }) {
   const response = await fetch(`${TRUST_API_URL}/api/agentguard/actions/execute`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': params.idempotencyKey ?? `buyer-checkout:${params.quoteId}`,
+      'X-Correlation-ID': params.correlationId,
+    },
     body: JSON.stringify({
       ...walletField(params.walletAddress),
       action: LEGACY_ACTION_ALIASES.checkout,
-      amount_inr: params.amountInr,
-      resource_id: params.sessionId,
+      amount_inr: 0,
+      resource_id: params.quoteId,
+      decision_id: params.decisionId,
       approval_id: params.approvalId,
-      idempotency_key: params.idempotencyKey ?? `buyer-checkout:${params.sessionId}`,
-      payload: checkoutPayload(params),
+      idempotency_key: params.idempotencyKey ?? `buyer-checkout:${params.quoteId}`,
+      payload: {
+        quote_id: params.quoteId,
+        payment_outcome: params.paymentOutcome ?? 'succeeded',
+      },
     }),
   });
   if (response.status === 409) {

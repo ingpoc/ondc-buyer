@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BUYER_TOOL_DEFINITIONS,
   buildPersonalizedBuyerSearchPath,
   catalogSearchQuery,
   inferBuyerSearchCategory,
@@ -11,12 +12,15 @@ import {
 } from './agentTools';
 import { clearBuyerCatalogCache } from './buyerCatalogCache';
 import { searchCommerceItems, getCommerceItem } from './commerceClient';
+import { evaluateBuyerCheckout, executeBuyerCheckout } from './agentGuardCheckout';
+import { prepareDurableCheckout } from './commerceV1Client';
 
 vi.mock('./commerceClient', () => ({
   searchCommerceItems: vi.fn(async () => ({ items: [], totalCount: 0, __source: 'api' })),
   getCommerceItem: vi.fn(async (itemId: string) => {
     throw new Error(`Unknown item: ${itemId}`);
   }),
+  orderFromCommerceExecution: vi.fn(() => null),
 }));
 
 vi.mock('./ondc/protocolClient', () => ({
@@ -29,7 +33,12 @@ vi.mock('./ondc/protocolClient', () => ({
 }));
 
 vi.mock('./agentGuardCheckout', () => ({
+  evaluateBuyerCheckout: vi.fn(),
   executeBuyerCheckout: vi.fn(),
+}));
+
+vi.mock('./commerceV1Client', () => ({
+  prepareDurableCheckout: vi.fn(),
 }));
 
 vi.mock('./samanthaMemory', () => ({
@@ -47,6 +56,7 @@ describe('buyer agent tools cart path', () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     clearBuyerCatalogCache();
+    localStorage.clear();
   });
 
   it('returns empty demo-commerce results without mock fallback', async () => {
@@ -268,6 +278,14 @@ describe('buyer agent tools cart path', () => {
     expect(coerceBuyerNavPath('/agent')).toBeNull();
   });
 
+  it('keeps page navigation distinct from product catalog search', () => {
+    const search = BUYER_TOOL_DEFINITIONS.find((tool) => tool.name === 'search_catalog');
+    const navigate = BUYER_TOOL_DEFINITIONS.find((tool) => tool.name === 'navigate_to');
+
+    expect(search?.description).toMatch(/Cart.*app pages, not products/i);
+    expect(navigate?.description).toMatch(/show me my cart/i);
+  });
+
   it('clear_cart returns an explicit host mutation for every live cart line', async () => {
     const result = await runBuyerTool(
       'clear_cart',
@@ -330,5 +348,84 @@ describe('buyer agent tools cart path', () => {
     expect(buyer?.street).toBe('42 Market Road');
     expect(buyer?.city).toBe('Pune');
     expect(buyer?.pincode).toBe('411001');
+  });
+
+  it('checkout_commit prepares an exact durable quote before AgentGuard review', async () => {
+    const sessionId = 'session-checkout-address';
+    localStorage.setItem('ondc-session-id', sessionId);
+    const { addLocalItem } = await import('./localCart');
+    const { getMockBuyerItems } = await import('./mockSearch');
+    addLocalItem(sessionId, getMockBuyerItems()[0] as never, 1);
+    await runBuyerTool(
+      'fill_checkout',
+      {
+        session_id: sessionId,
+        name: 'Gurusharan Gupta',
+        email: 'buyer@example.com',
+        phone: '+919876543210',
+        line1: '42 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postal_code: '411001',
+      },
+      { subjectId: 'principal:demo:test' },
+    );
+    vi.mocked(prepareDurableCheckout).mockResolvedValueOnce({
+      cart: { cart_id: 'cart-1', seller_id: 'seller-1', version: 2 },
+      quote: {
+        quote_id: 'quote-1',
+        cart_id: 'cart-1',
+        cart_version: 2,
+        subtotal_paise: 9900,
+        landed_total_paise: 9900,
+        expires_at: '2026-07-22T12:00:00Z',
+      },
+      correlationId: 'buyer-checkout:attempt-1',
+    });
+    vi.mocked(evaluateBuyerCheckout).mockResolvedValueOnce({
+      decision: 'need_approval',
+      decision_id: 'decision-1',
+      reason: 'Exact approval required',
+      approval: { approval_id: 'approval-1' },
+      receipt: null,
+    } as never);
+
+    const result = await runBuyerTool(
+      'checkout_commit',
+      { session_id: sessionId, amount_inr: 99 },
+      { subjectId: 'principal:demo:test' },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(prepareDurableCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: expect.any(Array),
+      }),
+    );
+    expect(evaluateBuyerCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quoteId: 'quote-1',
+        amountInr: 99,
+        correlationId: 'buyer-checkout:attempt-1',
+      }),
+    );
+    expect(executeBuyerCheckout).not.toHaveBeenCalled();
+  });
+
+  it('checkout_commit opens checkout instead of creating an address-less order', async () => {
+    const sessionId = 'session-checkout-missing-address';
+    const { getLocalSession } = await import('./localCart');
+    getLocalSession(sessionId);
+
+    const result = await runBuyerTool(
+      'checkout_commit',
+      { session_id: sessionId, amount_inr: 99 },
+      { subjectId: 'principal:demo:test' },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.navigateTo).toBe('/checkout');
+    expect(result.message).toMatch(/street.*6-digit PIN/i);
+    expect(executeBuyerCheckout).not.toHaveBeenCalled();
   });
 });

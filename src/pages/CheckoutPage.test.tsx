@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { UCPAddress } from '../types';
 import {
+  checkoutFormReady,
   checkoutDecisionStep,
   DeliveryAddressForm,
   ExactApprovalReview,
@@ -40,11 +41,37 @@ describe('DeliveryAddressForm semantics', () => {
   });
 });
 
+describe('checkout form readiness', () => {
+  const completeAddress: UCPAddress = {
+    line1: '42 Market Road',
+    city: 'Pune',
+    state: 'Maharashtra',
+    postalCode: '411001',
+    country: 'IND',
+  };
+
+  it('requires both customer identity and a complete six-digit delivery address', () => {
+    const session = {
+      buyer: {
+        name: 'Gurusharan Gupta',
+        email: 'buyer@example.com',
+        phone: '+919876543210',
+        contact: { email: 'buyer@example.com' },
+      },
+    };
+
+    expect(checkoutFormReady(session, completeAddress)).toBe(true);
+    expect(checkoutFormReady(session, { ...completeAddress, postalCode: '4110' })).toBe(false);
+    expect(checkoutFormReady({ buyer: { ...session.buyer, name: '' } }, completeAddress)).toBe(false);
+  });
+});
+
 describe('Exact checkout approval', () => {
   it('stops a need-approval decision at customer review instead of execution', () => {
     expect(
       checkoutDecisionStep({
         decision: 'need_approval',
+        decision_id: 'decision-1',
         reason: 'Amount above automatic limit',
         approval: { approval_id: 'approval-1', amount_inr: 298 },
       }),

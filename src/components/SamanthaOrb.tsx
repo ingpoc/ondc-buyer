@@ -34,7 +34,7 @@ const BUYER_ORB_INSTRUCTIONS =
   'Find / search / show / need / looking for products: ALWAYS call search_catalog for that product in THIS turn — even if Host context still shows a previous query’s offers. It opens /results so they watch offers load. Stop after search; do NOT call add_to_cart for “I need X” / “find X” / “show X” phrasing. Only add_to_cart when they explicitly say add, put in cart, buy, or checkout a listed item. ' +
   'Never name a product, price, or count from memory or a prior turn. Only describe offers returned by the latest search_catalog tool result or Host visible_results for the CURRENT query. ' +
   'search_catalog may apply saved likes and shopping preferences only when relevant to this product; briefly name applied filters and never claim an unrelated preference was used. ' +
-  'Open cart / checkout / orders / config: call navigate_to to that path so the page changes. ' +
+  'Cart is app state, never a catalog product. For “show/open my cart”, checkout, orders, or config, call navigate_to to that path and never search_catalog. ' +
   'Add to cart (only after an explicit add/buy request): if Host context lists cached offers for the current query OR /results already shows those offers, call add_to_cart with item_id or query — never claim the catalog is empty when Host context has items for this query, and do NOT search again. ' +
   'Only search_catalog before add when they asked to add and there is no Host context and no results yet. They land on /cart with the line visible. ' +
   'Cart changes: use clear_cart to empty it, remove_from_cart for one line, and set_cart_quantity to change a quantity. Never say you lack these actions. ' +
@@ -152,6 +152,7 @@ export function SamanthaOrb() {
   const [hint, setHint] = useState('Tap for Samantha (voice or text)');
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState('');
+  const [micActive, setMicActive] = useState(false);
   /** null = status not loaded yet (do not treat as missing OpenAI key). */
   const [configured, setConfigured] = useState<boolean | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -170,6 +171,8 @@ export function SamanthaOrb() {
   /** Queued while connecting — flushed when Realtime is listening. */
   const pendingTextRef = useRef<string | null>(null);
   const pendingFallbackTimerRef = useRef<number | null>(null);
+  const textInputRef = useRef<HTMLInputElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   /** Current customer turn, used to keep the product noun authoritative over a saved qualifier. */
   const latestUserTextRef = useRef<string | null>(null);
   /** Survives tool arg resolution so we can force search_catalog when the model skips it. */
@@ -181,6 +184,12 @@ export function SamanthaOrb() {
   const handleToolCallRef = useRef<
     (name: string, callId: string, argsJson: string) => Promise<void>
   >(async () => undefined);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => textInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     const openFromHero = () => {
@@ -508,9 +517,7 @@ export function SamanthaOrb() {
             result_state: 'empty',
             can_assert_empty: true,
           };
-          hostMessage =
-            `No offers found for “${stableQuery}” on the results page. ` +
-            'Tell the user honestly none matched — do not invent products or say they are still loading.';
+          hostMessage = `No offers found for “${stableQuery}” on the results page.`;
         }
         setHint(hostMessage);
       }
@@ -570,8 +577,8 @@ export function SamanthaOrb() {
       // Host-forced searches (model skipped the tool) must not emit a fake
       // function_call_output — Realtime rejects unknown call_ids.
       if (callId.startsWith('forced-')) {
-        setReply(hostMessage.slice(0, 500));
-        replyBufRef.current = hostMessage.slice(0, 500);
+        setReply(hostMessage);
+        replyBufRef.current = hostMessage;
         markSamanthaTurn(false, 'forced_search_done');
         return;
       }
@@ -646,11 +653,12 @@ export function SamanthaOrb() {
       /* already closed */
     }
     setState('idle');
+    setMicActive(false);
   }
 
   function appendReply(chunk: string) {
     replyBufRef.current += chunk;
-    setReply(replyBufRef.current.slice(0, 1200));
+    setReply(replyBufRef.current);
   }
 
   function wireDataChannel(dc: RTCDataChannel, model: string, usedMic: boolean) {
@@ -717,7 +725,8 @@ export function SamanthaOrb() {
         }
         if (msg.type === 'session.updated') {
           setState('listening');
-          setHint(usedMic ? 'Listening + text ready' : 'Text mode ready (no mic)');
+          setMicActive(usedMic);
+          setHint(usedMic ? 'Voice and text ready · microphone on' : 'Text ready · microphone off');
           void persistSamanthaEvent({
             role: 'buyer',
             sessionId: transcriptSessionIdRef.current,
@@ -1086,15 +1095,14 @@ export function SamanthaOrb() {
   }
 
   function toggle() {
-    if (open && (state === 'listening' || state === 'connecting')) {
-      stopSession();
+    if (open) {
+      if (state === 'listening' || state === 'connecting' || state === 'error') {
+        stopSession();
+      }
       setOpen(false);
       setHint('Samantha paused');
       setReply('');
-      return;
-    }
-    if (open && state === 'idle') {
-      setOpen(false);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
       return;
     }
     setOpen(true);
@@ -1110,11 +1118,30 @@ export function SamanthaOrb() {
         <div
           className="pointer-events-auto w-[340px] max-w-[calc(100vw-2.5rem)] rounded-2xl border border-border/70 bg-card/95 px-4 py-3 text-sm shadow-[var(--surface-lift)] backdrop-blur-xl"
           data-testid="samantha-orb-panel"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="buyer-samantha-title"
+          aria-describedby="buyer-samantha-status"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              toggle();
+            }
+          }}
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-base font-semibold tracking-tight text-foreground">Samantha</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{hint}</p>
+              <h2 id="buyer-samantha-title" className="text-base font-semibold tracking-tight text-foreground">
+                Samantha
+              </h2>
+              <p id="buyer-samantha-status" className="mt-1 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                {hint}
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground" data-testid="samantha-mic-status">
+                {micActive
+                  ? 'Microphone on. Audio is shared only while Samantha is open; Close stops it.'
+                  : 'Microphone off. Text remains available.'}
+              </p>
             </div>
             <button
               type="button"
@@ -1136,6 +1163,7 @@ export function SamanthaOrb() {
           ) : null}
           <form className="mt-3 flex gap-2" onSubmit={sendText}>
             <input
+              ref={textInputRef}
               type="text"
               aria-label="Ask Samantha"
               value={draft}
@@ -1163,6 +1191,7 @@ export function SamanthaOrb() {
         </div>
       ) : (
         <button
+          ref={triggerRef}
           type="button"
           aria-label={state === 'listening' ? 'Stop Samantha' : 'Open Samantha'}
           data-testid="samantha-orb"

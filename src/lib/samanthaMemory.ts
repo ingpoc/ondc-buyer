@@ -60,7 +60,7 @@ export function loadSamanthaMemoryMerged(principalId?: string | null): SamanthaM
 }
 
 export function saveSamanthaMemory(
-  walletAddress: string | null | undefined,
+  principalId: string | null | undefined,
   memory: SamanthaMemory,
 ): SamanthaMemory {
   const next: SamanthaMemory = {
@@ -70,8 +70,9 @@ export function saveSamanthaMemory(
     notes: memory.notes.slice(0, MAX_ITEMS),
     updatedAt: new Date().toISOString(),
   };
-  if (walletAddress?.trim()) {
-    localStorage.setItem(storageKey(walletAddress), JSON.stringify(next));
+  if (principalId?.trim()) {
+    localStorage.setItem(storageKey(principalId), JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('buyer-samantha-memory-changed'));
   }
   return next;
 }
@@ -85,23 +86,23 @@ function pushUnique(list: string[], value: string): string[] {
 }
 
 export function rememberSamanthaFact(
-  walletAddress: string | null | undefined,
+  principalId: string | null | undefined,
   kind: 'like' | 'dislike' | 'preference' | 'note',
   value: string,
 ): SamanthaMemory {
-  const mem = loadSamanthaMemory(walletAddress);
+  const mem = loadSamanthaMemory(principalId);
   if (kind === 'like') mem.likes = pushUnique(mem.likes, value);
   if (kind === 'dislike') mem.dislikes = pushUnique(mem.dislikes, value);
   if (kind === 'preference') mem.preferences = pushUnique(mem.preferences, value);
   if (kind === 'note') mem.notes = pushUnique(mem.notes, value);
-  return saveSamanthaMemory(walletAddress, mem);
+  return saveSamanthaMemory(principalId, mem);
 }
 
 export function recordPurchasePreference(
-  walletAddress: string | null | undefined,
+  principalId: string | null | undefined,
   itemTitle: string,
 ): SamanthaMemory {
-  return rememberSamanthaFact(walletAddress, 'preference', `Bought: ${itemTitle}`);
+  return rememberSamanthaFact(principalId, 'preference', `Bought: ${itemTitle}`);
 }
 
 export function formatMemoryForPrompt(memory: SamanthaMemory): string {

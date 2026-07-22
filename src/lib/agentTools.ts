@@ -14,7 +14,8 @@ import {
   waitForBuyerCatalogItems,
 } from './buyerCatalogCache';
 import { getCommerceItem, orderFromCommerceExecution, searchCommerceItems } from './commerceClient';
-import { executeBuyerCheckout } from './agentGuardCheckout';
+import { evaluateBuyerCheckout, executeBuyerCheckout } from './agentGuardCheckout';
+import { prepareDurableCheckout } from './commerceV1Client';
 import { writeCheckoutOutcome } from './checkoutOutcome';
 import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from './commerceConfig';
 import { shouldUseLocalCartFallback } from './cartFailurePolicy';
@@ -510,8 +511,9 @@ export const BUYER_TOOL_DEFINITIONS = [
     type: 'function' as const,
     name: 'search_catalog',
     description:
-      'Short tool: open the Buyer results page for a query so the user sees offers load, then return matching item ids. ' +
-      'Always use for find/search/show product asks. Chain with add_to_cart only after the user sees results (or in the same turn after search returns ids).',
+      'Short tool: open the Buyer results page for a PRODUCT query so the user sees offers load, then return matching item ids. ' +
+      'Use for find/search/show product asks only. Cart, checkout, orders, and preferences are app pages, not products; use navigate_to for those. ' +
+      'Chain with add_to_cart only after the user sees results (or in the same turn after search returns ids).',
     parameters: {
       type: 'object',
       properties: { query: { type: 'string' } },
@@ -523,7 +525,7 @@ export const BUYER_TOOL_DEFINITIONS = [
     name: 'navigate_to',
     description:
       'Short tool: navigate the Buyer UI so the user sees that page (/search, /cart, /checkout, /orders, /config, /results?q=…). ' +
-      'Use when they ask to open/go to a page. Prefer search_catalog for product find (it opens /results).',
+      'Use when they ask to open/go/show an app page, including “show me my cart”. Prefer search_catalog only for a product find (it opens /results).',
     parameters: {
       type: 'object',
       properties: { path: { type: 'string' } },
@@ -744,7 +746,7 @@ export async function runBuyerTool(
           message: cached.length
             ? `Opened results for “${catalogQ}” — ${cached.length} cached offer(s) ready to add; page still refreshing.`
             : emptyDemo
-              ? `Opened results for “${catalogQ}”. Seller catalog has 0 matches so far — watch the page; if it stays at 0 matches, tell the user honestly none were found (do not invent products).`
+              ? `Opened results for “${catalogQ}”. No matching offers are visible yet; the page is still checking the network.`
               : txn
                 ? `Opened results for “${catalogQ}” — watching offers load on the page. When adding, use add_to_cart with the product name (ids fill as offers paint).`
                 : `Opened results for “${catalogQ}”.`,
@@ -798,7 +800,7 @@ export async function runBuyerTool(
       message:
         items.length > 0
           ? `Showing ${items.length} item(s) for “${catalogQ}” on the results page.`
-          : `No offers found for “${catalogQ}”. Tell the user honestly none matched — do not invent products.`,
+          : `No offers found for “${catalogQ}”.`,
       data: {
         items: compact,
         count: items.length,
@@ -1092,15 +1094,64 @@ export async function runBuyerTool(
     };
   }
   try {
-    const executed = await executeBuyerCheckout({
-      walletAddress: wallet || null,
-      subjectId: subject || null,
-      amountInr,
-      sessionId,
-      approvalId: args.approval_id ? String(args.approval_id) : undefined,
-      itemId: args.item_id ? String(args.item_id) : undefined,
-      quantity: args.quantity != null ? Number(args.quantity) : 1,
+    const checkoutSession = getLocalSession(sessionId);
+    const buyer = checkoutSession.buyer;
+    const deliveryAddress = {
+      name: buyer?.name?.trim() || '',
+      phone: buyer?.phone?.trim() || '',
+      email: (buyer?.contact?.email || buyer?.email || '').trim(),
+      line1: buyer?.street?.trim() || '',
+      city: buyer?.city?.trim() || '',
+      state: buyer?.state?.trim() || '',
+      postalCode: buyer?.pincode?.trim() || '',
+      country: buyer?.country?.trim() || 'IND',
+    };
+    if (
+      !deliveryAddress.name ||
+      !deliveryAddress.phone ||
+      !deliveryAddress.email ||
+      !deliveryAddress.line1 ||
+      !deliveryAddress.city ||
+      !deliveryAddress.state ||
+      !/^\d{6}$/.test(deliveryAddress.postalCode)
+    ) {
+      return {
+        ok: false,
+        tool: name,
+        message: 'Review checkout first: full name, phone, email, street, city, state, and a 6-digit PIN are required.',
+        navigateTo: '/checkout',
+      };
+    }
+    if (args.approval_id) {
+      return {
+        ok: false,
+        tool: name,
+        message: 'Review and confirm the exact pending approval on the checkout page.',
+        navigateTo: '/checkout',
+      };
+    }
+    const attemptId = crypto.randomUUID();
+    const prepared = await prepareDurableCheckout({
+      items: checkoutSession.items,
+      attemptId,
     });
+    const exactAmountInr = prepared.quote.landed_total_paise / 100;
+    const evaluated = await evaluateBuyerCheckout({
+      walletAddress: wallet || null,
+      amountInr,
+      quoteId: prepared.quote.quote_id,
+      correlationId: prepared.correlationId,
+    });
+    const executed =
+      evaluated.decision === 'allow'
+        ? await executeBuyerCheckout({
+            walletAddress: wallet || null,
+            quoteId: prepared.quote.quote_id,
+            decisionId: evaluated.decision_id,
+            correlationId: prepared.correlationId,
+            idempotencyKey: `${attemptId}:execute`,
+          })
+        : evaluated;
     const decision = (executed.decision ?? 'allow') as BuyerToolResult['decision'];
     const receiptId = executed.receipt?.receipt_id;
     const approvalId =
@@ -1120,7 +1171,8 @@ export async function runBuyerTool(
     let orderId: string | null = null;
     let navigateTo = '/checkout';
     if ((decision === 'allow' || !decision) && receiptId) {
-      const order = orderFromCommerceExecution(executed.execution);
+      const execution = 'execution' in executed ? executed.execution : undefined;
+      const order = orderFromCommerceExecution(execution);
       if (order) {
         clearLocalSession(sessionId);
         orderId = order.id;
@@ -1142,7 +1194,7 @@ export async function runBuyerTool(
       decision: decision || 'unknown',
       message,
       receiptId: receiptId ?? null,
-      amountInr,
+      amountInr: exactAmountInr,
       orderId,
       approvalId: approvalId || null,
     });

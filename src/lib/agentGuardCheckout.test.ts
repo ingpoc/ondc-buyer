@@ -140,6 +140,7 @@ describe('Buyer AgentGuard controls', () => {
       .mockResolvedValueOnce(
         apiResponse({
           decision: 'need_approval',
+          decision_id: 'decision-1',
           reason: 'Approval required',
           approval: { approval_id: 'approval-1', amount_inr: 20000 },
           receipt: null,
@@ -156,40 +157,27 @@ describe('Buyer AgentGuard controls', () => {
 
     const params = {
       walletAddress: 'principal:demo:buyer',
-      subjectId: 'principal:demo:buyer',
       amountInr: 20000,
-      sessionId: 'checkout-1',
-      itemId: 'item-1',
-      itemName: 'Whole Wheat Atta 1kg',
-      quantity: 2,
-      deliveryAddress: {
-        line1: '12 Market Road',
-        city: 'Pune',
-        state: 'Maharashtra',
-        postalCode: '411001',
-        country: 'IND',
-      },
+      quoteId: 'quote-1',
+      correlationId: 'checkout-correlation-1',
     };
     const decision = await evaluateBuyerCheckout(params);
-    await executeBuyerCheckout({ ...params, approvalId: decision.approval?.approval_id });
+    await executeBuyerCheckout({
+      walletAddress: params.walletAddress,
+      quoteId: params.quoteId,
+      decisionId: decision.decision_id,
+      correlationId: params.correlationId,
+      approvalId: decision.approval?.approval_id,
+    });
 
     const evaluateBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     const executeBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
-    expect(evaluateBody.payload).toEqual(executeBody.payload);
+    expect(evaluateBody.payload).toEqual({ quote_id: 'quote-1' });
     expect(executeBody.payload).toEqual({
-      item_id: 'item-1',
-      item_title: 'Whole Wheat Atta 1kg',
-      quantity: 2,
-      buyer_id: 'principal:demo:buyer',
-      amount_inr: 20000,
-      delivery_address: {
-        line1: '12 Market Road',
-        city: 'Pune',
-        state: 'Maharashtra',
-        postalCode: '411001',
-        country: 'IND',
-      },
+      quote_id: 'quote-1',
+      payment_outcome: 'succeeded',
     });
+    expect(executeBody.decision_id).toBe('decision-1');
   });
 
   it('preserves a safe inventory conflict message from checkout execution', async () => {
@@ -205,11 +193,9 @@ describe('Buyer AgentGuard controls', () => {
 
     await expect(
       executeBuyerCheckout({
-        subjectId: 'principal:demo:buyer',
-        amountInr: 89,
-        sessionId: 'checkout-sold-out',
-        itemId: 'item-sold-out',
-        quantity: 1,
+        quoteId: 'quote-sold-out',
+        decisionId: 'decision-sold-out',
+        correlationId: 'checkout-sold-out',
       }),
     ).rejects.toThrow('Insufficient inventory.');
   });

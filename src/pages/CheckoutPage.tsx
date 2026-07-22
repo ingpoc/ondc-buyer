@@ -7,6 +7,7 @@ import { useCart, useSubject, useTrustState } from '../hooks';
 import { COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
 import { createLocalQuote, updateLocalDeliveryAddress } from '../lib/localCart';
 import { orderFromCommerceExecution } from '../lib/commerceClient';
+import { prepareDurableCheckout, type DurableQuote } from '../lib/commerceV1Client';
 import { isOndcNetworkSearchReady, ondcSelectInitConfirm } from '../lib/ondc/protocolClient';
 import {
   compileBuyerMandate,
@@ -32,7 +33,7 @@ import {
 } from '../lib/checkoutPrefill';
 import { customerReference, sellerDisplayName } from '../lib/displayText';
 import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
-import type { UCPAddress, UCPItem, UCPQuote } from '../types';
+import type { UCPAddress, UCPItem, UCPQuote, UCPSession } from '../types';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -43,7 +44,43 @@ import { Spinner } from '../components/ui/spinner';
 
 type CheckoutExecutionRequest = Parameters<typeof executeBuyerCheckout>[0] & {
   runOndc: boolean;
+  amountInr: number;
+  subjectId?: string | null;
 };
+
+interface PreparedCheckout {
+  quote: DurableQuote;
+  correlationId: string;
+  attemptId: string;
+}
+
+function durableQuoteForDisplay(quote: DurableQuote): UCPQuote {
+  const subtotal = quote.subtotal_paise / 100;
+  const landedTotal = quote.landed_total_paise / 100;
+  const fees = Math.max(0, landedTotal - subtotal);
+  return {
+    price: { currency: 'INR', value: landedTotal.toFixed(2) },
+    total: { currency: 'INR', value: landedTotal.toFixed(2) },
+    subtotal: { currency: 'INR', value: subtotal.toFixed(2) },
+    deliveryCost: fees > 0 ? { currency: 'INR', value: fees.toFixed(2) } : undefined,
+    breakup: [
+      {
+        title: 'Cart subtotal',
+        type: 'item',
+        price: { currency: 'INR', value: subtotal.toFixed(2) },
+      },
+      ...(fees > 0
+        ? [{
+            title: 'Delivery and fees',
+            type: 'fee',
+            price: { currency: 'INR', value: fees.toFixed(2) },
+          }]
+        : []),
+    ],
+    currency: 'INR',
+    amount: { currency: 'INR', value: landedTotal.toFixed(2) },
+  };
+}
 
 export function checkoutDecisionStep(
   decision: BuyerCheckoutDecision,
@@ -183,7 +220,22 @@ export function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormPr
   );
 }
 
-function CartSummary({ currency }: { currency: string }) {
+export function checkoutFormReady(
+  session: Pick<UCPSession, 'buyer'> | null,
+  address: UCPAddress,
+): boolean {
+  const buyer = session?.buyer;
+  return Boolean(
+    buyer?.name?.trim() &&
+      (buyer.contact?.email || buyer.email)?.trim() &&
+      address.line1?.trim() &&
+      address.city?.trim() &&
+      address.state?.trim() &&
+      /^\d{6}$/.test((address.postalCode || address.pincode || '').trim()),
+  );
+}
+
+function CartSummary({ currency, formReady }: { currency: string; formReady: boolean }) {
   const { session, subtotal } = useCart();
 
   if (!session) return null;
@@ -218,7 +270,9 @@ function CartSummary({ currency }: { currency: string }) {
         </div>
 
         <p className="text-sm text-muted-foreground">
-          Complete the form to estimate delivery, tax, and the final quote.
+          {formReady
+            ? 'Billing and delivery details are ready. Authorize below to create the order and receive the final receipt.'
+            : 'Complete billing and the delivery address to authorize this order.'}
         </p>
       </CardContent>
     </Card>
@@ -231,6 +285,7 @@ export function CheckoutPage() {
   const { session, loading, error, itemCount, refreshCart, clearCart } = useCart();
   const trust = useTrustState(walletAddress);
   const [quote, setQuote] = useState<UCPQuote | null>(null);
+  const [preparedCheckout, setPreparedCheckout] = useState<PreparedCheckout | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [agentGuardNote, setAgentGuardNote] = useState<string | null>(null);
@@ -263,6 +318,11 @@ export function CheckoutPage() {
       country: session.buyer?.country || 'IND',
     });
   }, [principalId, session, subjectId]);
+
+  useEffect(() => {
+    setPreparedCheckout(null);
+    setQuote(null);
+  }, [session?.id, session?.updatedAt]);
 
   const handleDeliveryAddressChange = useCallback((address: UCPAddress) => {
     setDeliveryAddress(address);
@@ -444,38 +504,37 @@ export function CheckoutPage() {
       const principal = COMMERCE_DEMO_MODE ? walletAddress : walletAddress ?? subjectId;
       if (!principal) throw new Error('Sign in before checkout.');
 
-      const amountInr = Math.round(
-        Number(quote?.total?.value ?? quote?.price?.value ?? 0) ||
-          session.items.reduce(
-            (sum, item) => sum + parseFloat(item.item.price?.value || '0') * item.quantity,
-            0,
-          ),
-      );
-      const firstCheckoutItem = session.items[0]?.item as UCPItem | undefined;
+      if (!preparedCheckout) {
+        const attemptId = crypto.randomUUID();
+        const prepared = await prepareDurableCheckout({ items: session.items, attemptId });
+        setPreparedCheckout({
+          quote: prepared.quote,
+          correlationId: prepared.correlationId,
+          attemptId,
+        });
+        setQuote(durableQuoteForDisplay(prepared.quote));
+        setAgentGuardNote('Exact landed-cost preview ready. Review the total, then authorize this quote.');
+        return;
+      }
+
+      const prepared = preparedCheckout;
+      const amountInr = prepared.quote.landed_total_paise / 100;
+      const decision = await evaluateBuyerCheckout({
+        walletAddress: principal,
+        amountInr,
+        quoteId: prepared.quote.quote_id,
+        correlationId: prepared.correlationId,
+      });
       const request: CheckoutExecutionRequest = {
         walletAddress: principal,
         subjectId,
         amountInr,
-        sessionId,
-        itemId: session.items[0]?.item?.id,
-        itemName:
-          session.items[0]?.item?.descriptor?.name ??
-          session.items[0]?.item?.name ??
-          session.items[0]?.item?.id,
-        sellerName: sellerDisplayName(
-          firstCheckoutItem?.provider?.name,
-          firstCheckoutItem?._provider,
-        ),
-        quantity: session.items[0]?.quantity ?? 1,
-        deliveryAddress: {
-          name: session.buyer?.name ?? '',
-          phone: session.buyer?.phone ?? '',
-          email: session.buyer?.email,
-          ...deliveryAddress,
-        },
+        quoteId: prepared.quote.quote_id,
+        decisionId: decision.decision_id,
+        correlationId: prepared.correlationId,
+        idempotencyKey: `${prepared.attemptId}:execute`,
         runOndc: !COMMERCE_DEMO_MODE,
       };
-      const decision = await evaluateBuyerCheckout(request);
 
       const decisionStep = checkoutDecisionStep(decision);
       if (decisionStep === 'deny') {
@@ -564,8 +623,8 @@ export function CheckoutPage() {
   const currency = session?.items[0]?.item.price?.currency || 'INR';
   const shoppingLimitDirty =
     savedCheckoutAutoMax !== null && checkoutAutoMax !== savedCheckoutAutoMax;
-  const buyerReady = Boolean(session?.buyer?.name && session?.buyer?.contact?.email);
-  const actionDisabled = submitting || trustBlocksCheckout || !buyerReady;
+  const formReady = checkoutFormReady(session, deliveryAddress);
+  const actionDisabled = submitting || trustBlocksCheckout || !formReady;
   const checkoutItems = (session?.items ?? []).map((entry) => entry.item as UCPItem);
   const sellerNames = Array.from(
     new Set(checkoutItems.map((item) => sellerDisplayName(item.provider?.name, item._provider))),
@@ -754,9 +813,14 @@ export function CheckoutPage() {
 
             <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
               {quote ? (
-                <QuoteDisplay quote={quote} currency={currency} />
+                <div className="space-y-2" data-testid="buyer-durable-quote-preview">
+                  <p className="text-sm text-muted-foreground">
+                    Exact landed-cost preview. This total is bound to the authorization below.
+                  </p>
+                  <QuoteDisplay quote={quote} currency={currency} />
+                </div>
               ) : (
-                <CartSummary currency={currency} />
+                <CartSummary currency={currency} formReady={formReady} />
               )}
 
               <Card className="border-border/70 bg-card/90" data-testid="buyer-authority-card">
@@ -827,7 +891,9 @@ export function CheckoutPage() {
                       ? 'Trust verification required'
                       : submitting
                         ? 'Processing...'
-                        : 'Authorize and place order'}
+                        : preparedCheckout
+                          ? 'Authorize exact total and place order'
+                          : 'Preview exact landed cost'}
                   </Button>
 
                   {!actionDisabled ? (
@@ -844,7 +910,7 @@ export function CheckoutPage() {
                       <p>
                         {trustBlocksCheckout
                           ? trust.reason || 'Sign in to continue.'
-                          : 'Please complete billing information before continuing.'}
+                          : 'Please complete billing and the delivery address before continuing.'}
                       </p>
                     </div>
                   ) : null}

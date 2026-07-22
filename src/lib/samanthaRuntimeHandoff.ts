@@ -2,7 +2,10 @@
  * Samantha background work — starts /api/agent/buyer while the global orb
  * remains the sole visible Buyer assistant surface.
  */
-import { runBuyerRuntimeTask } from './runBuyerRuntimeTask';
+import {
+  runBuyerRuntimeTask,
+  type VerifiedRuntimeOutcome,
+} from './runBuyerRuntimeTask';
 
 export type BuyerRuntimeJobUpdate = {
   status: 'started' | 'completed' | 'failed' | 'busy';
@@ -43,17 +46,18 @@ export type StartBuyerRuntimeBackgroundResult = {
   busy?: boolean;
 };
 
-function summarizeResult(content: string): string {
-  const trimmed = content.trim();
-  if (!trimmed) return 'All done.';
-  try {
-    const parsed = JSON.parse(trimmed) as { summary?: string; message?: string };
-    const summary = (parsed.summary || parsed.message || '').trim();
-    if (summary) return summary.slice(0, 280);
-  } catch {
-    /* plain text */
+export function verifiedRuntimeSummary(outcome: VerifiedRuntimeOutcome | undefined): string | null {
+  if (
+    outcome?.status !== 'completed'
+    || !outcome.summary?.trim()
+    || !Array.isArray(outcome.executed_tools)
+    || outcome.executed_tools.length === 0
+    || !outcome.postcondition?.verified
+    || !outcome.postcondition.evidence?.trim()
+  ) {
+    return null;
   }
-  return trimmed.slice(0, 280);
+  return outcome.summary.trim().slice(0, 280);
 }
 
 /** Start buyer agent work in the background. One in-flight job; a second request is rejected. */
@@ -101,6 +105,7 @@ export function startBuyerRuntimeBackground(params: {
   void (async () => {
     let summary = '';
     let failed: string | null = null;
+    let verified = false;
     const progressTimer = globalThis.setTimeout(() => {
       if (inflight === controller) {
         notify({
@@ -122,8 +127,14 @@ export function startBuyerRuntimeBackground(params: {
           samantha_background: true,
           ...(params.context ?? {}),
         },
-        onResult: (content) => {
-          summary = summarizeResult(content);
+        onResult: (_content, outcome) => {
+          const verifiedSummary = verifiedRuntimeSummary(outcome);
+          if (!verifiedSummary) {
+            failed = 'The runtime could not verify that the requested work completed.';
+            return;
+          }
+          verified = true;
+          summary = verifiedSummary;
         },
         onError: (error) => {
           failed = error;
@@ -142,12 +153,13 @@ export function startBuyerRuntimeBackground(params: {
 
     if (controller.signal.aborted) return;
 
-    if (failed) {
+    if (failed || !verified) {
+      const failure = failed || 'The runtime returned no verified completion result.';
       notify({
         status: 'failed',
         task,
-        error: failed,
-        summary: `Sorry — that didn't finish (${failed.slice(0, 120)}).`,
+        error: failure,
+        summary: `Sorry — that didn't finish (${failure.slice(0, 120)}).`,
       });
       return;
     }
@@ -155,7 +167,7 @@ export function startBuyerRuntimeBackground(params: {
     notify({
       status: 'completed',
       task,
-      summary: summary || 'All done.',
+      summary,
     });
   })();
 

@@ -2,6 +2,7 @@ import type { UCPItem, UCPOrder } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
 import { TRUST_API_URL } from './identityUrls';
 import { isLocalBrowserHost } from './loopback';
+import { sellerDisplayName } from './displayText';
 
 export interface DemoCommerceItem {
   item_id: string;
@@ -127,6 +128,17 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
       : order.status === 'rejected' || order.status === 'cancelled'
         ? 'cancelled'
         : 'created';
+  const paymentStatus = order.payment?.status === 'succeeded'
+    ? 'completed'
+    : order.payment?.status === 'reconciled'
+      ? 'reconciled'
+      : order.payment?.status === 'unknown'
+        ? 'unknown'
+        : order.payment?.status === 'pending'
+          ? 'pending'
+          : order.payment?.status === 'failed'
+            ? 'failed'
+            : undefined;
   return {
     id: order.order_id,
     status,
@@ -134,8 +146,8 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
     updatedAt: order.updated_at,
     provider: {
       id: order.seller_id,
-      name: order.seller_name,
-      verified: Boolean(order.seller_name),
+      name: sellerDisplayName(order.seller_name, order.seller_id),
+      verified: Boolean(order.seller_id),
     },
     items: [
       {
@@ -158,6 +170,17 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
       },
     },
     deliveryAddress: order.delivery_address,
+    payment: paymentStatus
+      ? {
+          type: 'PRE-FULFILLMENT',
+          status: paymentStatus,
+          amount: {
+            currency: 'INR',
+            value: Number(order.payment?.amount_inr ?? total).toFixed(2),
+          },
+          transactionId: order.payment?.reference_id || order.message_id,
+        }
+      : undefined,
     authorization: order.authorization
       ? {
           decision: order.authorization.decision || 'allow',
@@ -176,6 +199,51 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
 export function orderFromCommerceExecution(execution?: Record<string, unknown> | null): UCPOrder | null {
   const order = execution?.order;
   if (!order || typeof order !== 'object') return null;
+  const durable = order as Record<string, unknown>;
+  if (typeof durable.landed_total_paise === 'number') {
+    const payment = execution?.payment_attempt as Record<string, unknown> | undefined;
+    const durableStatus = String(durable.status || 'prepared');
+    const status: UCPOrder['status'] = durableStatus === 'cancelled'
+      ? 'cancelled'
+      : durableStatus === 'delivered'
+        ? 'delivered'
+        : 'created';
+    const paymentStatus = payment?.status === 'succeeded'
+      ? 'completed'
+      : payment?.status === 'reconciled'
+        ? 'reconciled'
+        : payment?.status === 'failed'
+          ? 'failed'
+          : payment?.status === 'unknown'
+            ? 'unknown'
+            : 'pending';
+    return {
+      id: String(durable.order_id),
+      status,
+      createdAt: String(durable.created_at),
+      updatedAt: durable.updated_at ? String(durable.updated_at) : undefined,
+      provider: { id: String(durable.seller_id || '') },
+      items: [],
+      quote: {
+        total: {
+          currency: 'INR',
+          value: (durable.landed_total_paise / 100).toFixed(2),
+        },
+        breakup: [],
+      },
+      payment: {
+        type: 'PRE-FULFILLMENT',
+        status: paymentStatus,
+        amount: {
+          currency: 'INR',
+          value: (Number(payment?.amount_paise ?? durable.landed_total_paise) / 100).toFixed(2),
+        },
+        transactionId: payment?.payment_attempt_id
+          ? String(payment.payment_attempt_id)
+          : undefined,
+      },
+    };
+  }
   return mapDemoOrderToBuyerOrder(order as DemoCommerceOrder);
 }
 
