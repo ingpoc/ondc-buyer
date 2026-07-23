@@ -37,6 +37,19 @@ export interface DemoCommerceOrder {
   quantity: number;
   amount_inr: number;
   status: string;
+  version?: number;
+  fulfilment?: {
+    status?: string;
+    tracking_id?: string;
+    provider_name?: string;
+    status_message?: string;
+    history?: Array<{
+      status: string;
+      recorded_at: string;
+      tracking_id?: string;
+      status_message?: string;
+    }>;
+  };
   payment?: {
     status?: string;
     amount_inr?: number;
@@ -62,6 +75,26 @@ interface DemoCommerceIssue {
   reason: string;
   description: string;
   response?: string;
+  remedy?: {
+    type?: string;
+    amount_inr?: number;
+    message?: string;
+  };
+  outcome_receipt?: {
+    receipt_id?: string;
+    outcome?: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BuyerCommerceReturn {
+  return_id: string;
+  order_id: string;
+  status: string;
+  version: number;
+  reason: string;
+  resolution?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -121,9 +154,13 @@ export function mapDemoItemToBuyerItem(item: DemoCommerceItem): UCPItem {
 export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
   const total = order.amount_inr;
   const unitPrice = total / Math.max(order.quantity, 1);
-  const status = order.status === 'accepted'
+  const status = order.status === 'accepted' || order.status === 'confirmed'
     ? 'accepted'
-    : order.status === 'fulfilled' || order.status === 'closed'
+    : order.status === 'preparing'
+      ? 'in_progress'
+      : order.status === 'shipped'
+        ? 'shipped'
+        : order.status === 'delivered' || order.status === 'fulfilled' || order.status === 'closed'
       ? 'delivered'
       : order.status === 'rejected' || order.status === 'cancelled'
         ? 'cancelled'
@@ -163,10 +200,25 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
     },
     fulfillment: {
       type: 'delivery',
-      status: status === 'delivered' ? 'delivered' : status === 'cancelled' ? 'cancelled' : 'pending',
+      providerName: order.fulfilment?.provider_name,
+      status:
+        status === 'delivered'
+          ? 'delivered'
+          : status === 'cancelled'
+            ? 'cancelled'
+            : status === 'shipped'
+              ? 'in_transit'
+              : status === 'in_progress'
+                ? 'pending'
+                : 'pending',
       tracking: {
-        status,
-        statusMessage: 'Order is awaiting seller confirmation.',
+        id: order.fulfilment?.tracking_id,
+        status: order.fulfilment?.status || status,
+        statusMessage:
+          order.fulfilment?.status_message ||
+          (status === 'created'
+            ? 'Order is awaiting seller confirmation.'
+            : 'The latest seller fulfilment update is shown here.'),
       },
     },
     deliveryAddress: order.delivery_address,
@@ -259,10 +311,16 @@ function mapDemoIssueToBuyerSupportCase(issue: DemoCommerceIssue): BuyerSupportC
     issue_type: issueType,
     description: issue.description,
     evidence_links: [],
-    status: issue.status === 'resolved' ? 'resolved' : issue.status === 'open' ? 'open' : 'investigating',
+    status: ['accepted', 'closed', 'resolved'].includes(issue.status)
+      ? 'resolved'
+      : issue.status === 'open'
+        ? 'open'
+        : 'investigating',
     created_at: issue.created_at,
     updated_at: issue.updated_at,
     resolution_note: issue.response ?? null,
+    remedy: issue.remedy,
+    outcome_receipt_id: issue.outcome_receipt?.receipt_id,
   };
 }
 
@@ -300,4 +358,32 @@ export async function listCommerceBuyerIssues(orderId?: string) {
   const suffix = params.toString() ? `?${params.toString()}` : '';
   const data = await demoFetch<{ issues: DemoCommerceIssue[]; count: number }>(`/api/demo-commerce/buyer/issues${suffix}`);
   return data.issues.map(mapDemoIssueToBuyerSupportCase);
+}
+
+export async function createCommerceBuyerIssue(params: {
+  orderId: string;
+  reason: BuyerSupportCase['issue_type'];
+  description: string;
+}) {
+  const data = await demoFetch<{ issue: DemoCommerceIssue }>(
+    `/api/demo-commerce/buyer/orders/${encodeURIComponent(params.orderId)}/issues`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        reason: params.reason,
+        description: params.description,
+      }),
+    },
+  );
+  return mapDemoIssueToBuyerSupportCase(data.issue);
+}
+
+export async function listCommerceBuyerReturns(orderId?: string) {
+  const params = new URLSearchParams();
+  if (orderId) params.set('order_id', orderId);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const data = await demoFetch<{ returns: BuyerCommerceReturn[]; count: number }>(
+    `/api/demo-commerce/buyer/returns${suffix}`,
+  );
+  return data.returns;
 }

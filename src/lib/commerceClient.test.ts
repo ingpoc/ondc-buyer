@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createCommerceBuyerIssue,
+  listCommerceBuyerIssues,
   listCommerceBuyerOrders,
+  listCommerceBuyerReturns,
   mapDemoItemToBuyerItem,
   mapDemoOrderToBuyerOrder,
   orderFromCommerceExecution,
@@ -123,6 +126,112 @@ describe('mapDemoOrderToBuyerOrder', () => {
       updated_at: '2026-07-16T12:00:00Z',
     });
     expect(mapped.payment?.status).toBe(expected);
+  });
+
+  it('projects committed dispatch and delivery evidence for Buyer tracking', () => {
+    const mapped = mapDemoOrderToBuyerOrder({
+      order_id: 'order-delivered',
+      transaction_id: 'txn-delivered',
+      message_id: 'msg-delivered',
+      buyer_id: 'buyer-1',
+      seller_id: 'seller-1',
+      seller_name: 'Fresh Farm Foods',
+      item_id: 'item-1',
+      item_title: 'Whole Wheat Atta 1kg',
+      item_version: 1,
+      quantity: 1,
+      amount_inr: 149,
+      status: 'delivered',
+      fulfilment: {
+        status: 'delivered',
+        tracking_id: 'CF23-TRACK-1',
+        provider_name: 'Lifecycle Logistics',
+        status_message: 'Delivered to the customer',
+      },
+      created_at: '2026-07-23T00:00:00Z',
+      updated_at: '2026-07-23T01:00:00Z',
+    } satisfies DemoCommerceOrder);
+
+    expect(mapped.status).toBe('delivered');
+    expect(mapped.fulfillment).toMatchObject({
+      providerName: 'Lifecycle Logistics',
+      status: 'delivered',
+      tracking: {
+        id: 'CF23-TRACK-1',
+        status: 'delivered',
+        statusMessage: 'Delivered to the customer',
+      },
+    });
+  });
+});
+
+describe('Buyer fulfilment and remedy read/write boundary', () => {
+  it('uses authenticated issue and return routes and preserves verified outcome data', async () => {
+    const issue = {
+      issue_id: 'issue-1',
+      order_id: 'order-1',
+      status: 'resolution_proposed',
+      reason: 'post_delivery',
+      description: 'Package was damaged',
+      response: 'Replacement approved',
+      remedy: { type: 'replacement', message: 'Replacement will be sent' },
+      outcome_receipt: { receipt_id: 'receipt-outcome-1', outcome: 'closed' },
+      created_at: '2026-07-23T00:00:00Z',
+      updated_at: '2026-07-23T01:00:00Z',
+    };
+    const returnRequest = {
+      return_id: 'return-1',
+      order_id: 'order-1',
+      status: 'requested',
+      version: 1,
+      reason: 'Damaged package',
+      created_at: '2026-07-23T01:00:00Z',
+      updated_at: '2026-07-23T01:00:00Z',
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { issue } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { issues: [issue], count: 1 } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { returns: [returnRequest], count: 1 },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const created = await createCommerceBuyerIssue({
+      orderId: 'order-1',
+      reason: 'post_delivery',
+      description: 'Package was damaged',
+    });
+    const issues = await listCommerceBuyerIssues('order-1');
+    const returns = await listCommerceBuyerReturns('order-1');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(
+      /\/api\/demo-commerce\/buyer\/orders\/order-1\/issues$/,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(
+      /\/api\/demo-commerce\/buyer\/issues\?order_id=order-1$/,
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toMatch(
+      /\/api\/demo-commerce\/buyer\/returns\?order_id=order-1$/,
+    );
+    expect(created.remedy).toMatchObject({ type: 'replacement' });
+    expect(issues[0].outcome_receipt_id).toBe('receipt-outcome-1');
+    expect(returns[0]).toMatchObject({ return_id: 'return-1', status: 'requested' });
   });
 });
 

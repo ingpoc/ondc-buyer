@@ -6,9 +6,12 @@ import { useTrustState, useSubject } from '../hooks';
 import { effectiveElevatedTrustState } from '../lib/trust';
 import { fetchBuyerOrder } from '../lib/orderApi';
 import {
+  createCommerceBuyerIssue,
   getCommerceOrder,
   listCommerceBuyerIssues,
+  listCommerceBuyerReturns,
   orderFromCommerceExecution,
+  type BuyerCommerceReturn,
 } from '../lib/commerceClient';
 import { executeBuyerProtectedAction, verifyBuyerReceipt } from '../lib/agentGuardCheckout';
 import { customerReference, sellerDisplayName } from '../lib/displayText';
@@ -88,7 +91,11 @@ export function OrderDetailPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [supportCases, setSupportCases] = useState<BuyerSupportCase[]>([]);
+  const [returns, setReturns] = useState<BuyerCommerceReturn[]>([]);
   const [receiptVerified, setReceiptVerified] = useState<boolean | null>(null);
+  const [outcomeReceipt, setOutcomeReceipt] = useState<string | null>(null);
+  const [outcomeVerified, setOutcomeVerified] = useState<boolean | null>(null);
+  const [returning, setReturning] = useState(false);
   const [issueType, setIssueType] = useState<BuyerSupportCase['issue_type']>('fulfillment');
   const [issueDescription, setIssueDescription] = useState('');
 
@@ -107,6 +114,7 @@ export function OrderDetailPage(): JSX.Element {
         } else {
           setOrder(data);
           setSupportCases(await listCommerceBuyerIssues(data.id));
+          setReturns(await listCommerceBuyerReturns(data.id));
           if (data.authorization?.receiptReference) {
             try {
               const verification = await verifyBuyerReceipt({
@@ -168,29 +176,72 @@ export function OrderDetailPage(): JSX.Element {
       return;
     }
     try {
-      const executed = await executeBuyerProtectedAction({
-        walletAddress,
-        action: 'buyer.return.submit',
-        resourceId: order.id,
-        idempotencyKey: `buyer-return:${order.id}:${crypto.randomUUID()}`,
-        payload: {
-          order_id: order.id,
-          reason: issueType,
-          description: issueDescription.trim(),
-        },
+      await createCommerceBuyerIssue({
+        orderId: order.id,
+        reason: issueType,
+        description: issueDescription.trim(),
       });
-      if (!executed.execution) {
-        throw new Error(
-          executed.decision === 'need_approval'
-            ? 'Support request requires exact approval.'
-            : 'Support request was denied by AgentGuard.',
-        );
-      }
       setSupportCases(await listCommerceBuyerIssues(order.id));
       setIssueDescription('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create support case');
     }
+  }
+
+  async function handleRequestReturn() {
+    if (!order || order.status !== 'delivered') return;
+    setReturning(true);
+    setError(null);
+    try {
+      const executed = await executeBuyerProtectedAction({
+        walletAddress,
+        action: 'buyer.return.submit',
+        resourceId: order.id,
+        idempotencyKey: `buyer-return:${order.id}`,
+        payload: {
+          order_id: order.id,
+          reason: issueDescription.trim() || 'Buyer requested return after delivery',
+        },
+      });
+      if (!executed.execution || !executed.receipt?.receipt_id) {
+        throw new Error(
+          executed.decision === 'need_approval'
+            ? 'Return request requires exact approval.'
+            : 'Return request was denied by AgentGuard.',
+        );
+      }
+      setReturns(await listCommerceBuyerReturns(order.id));
+      setOutcomeReceipt(executed.receipt.receipt_id);
+      const verification = await verifyBuyerReceipt({
+        receiptId: executed.receipt.receipt_id,
+      });
+      setOutcomeVerified(verification.valid);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to request return');
+    } finally {
+      setReturning(false);
+    }
+  }
+
+  async function handleAcceptRemedy(supportCase: BuyerSupportCase) {
+    const executed = await executeBuyerProtectedAction({
+      walletAddress,
+      action: 'buyer.remedy.accept',
+      resourceId: supportCase.case_id,
+      idempotencyKey: `buyer-remedy-accept:${supportCase.case_id}`,
+      payload: {
+        issue_id: supportCase.case_id,
+      },
+    });
+    if (!executed.execution || !executed.receipt?.receipt_id) {
+      throw new Error('Remedy acceptance was not completed by AgentGuard.');
+    }
+    setSupportCases(await listCommerceBuyerIssues(order?.id));
+    setOutcomeReceipt(executed.receipt.receipt_id);
+    const verification = await verifyBuyerReceipt({
+      receiptId: executed.receipt.receipt_id,
+    });
+    setOutcomeVerified(verification.valid);
   }
 
   if (loading) {
@@ -289,6 +340,30 @@ export function OrderDetailPage(): JSX.Element {
             >
               {cancelling ? 'Cancelling...' : 'Cancel order'}
             </Button>
+          ) : null}
+          {order.status === 'delivered' && returns.length === 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => void handleRequestReturn()}
+              disabled={returning}
+            >
+              {returning ? 'Requesting return...' : 'Request return'}
+            </Button>
+          ) : null}
+          {outcomeReceipt ? (
+            <Badge
+              variant="secondary"
+              className={
+                outcomeVerified
+                  ? 'rounded-full bg-emerald-100 text-emerald-900'
+                  : 'rounded-full bg-amber-100 text-amber-950'
+              }
+            >
+              {outcomeVerified ? 'Verified outcome' : 'Outcome verification pending'} ·{' '}
+              {customerReference(outcomeReceipt)}
+            </Badge>
           ) : null}
         </div>
       </section>
@@ -418,6 +493,42 @@ export function OrderDetailPage(): JSX.Element {
                       <p className="mt-3 text-sm text-muted-foreground">
                         {supportCase.description}
                       </p>
+                      {supportCase.remedy ? (
+                        <div className="mt-3 space-y-2 rounded-2xl bg-primary/5 px-3 py-3 text-sm">
+                          <div className="font-medium">Seller remedy</div>
+                          <div className="text-muted-foreground">
+                            {supportCase.remedy.message ||
+                              `${supportCase.remedy.type || 'Remedy'}${
+                                supportCase.remedy.amount_inr
+                                  ? ` · INR ${supportCase.remedy.amount_inr}`
+                                  : ''
+                              }`}
+                          </div>
+                          {supportCase.status !== 'resolved' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-full"
+                              onClick={() => {
+                                void handleAcceptRemedy(supportCase).catch((reason: unknown) => {
+                                  setError(
+                                    reason instanceof Error
+                                      ? reason.message
+                                      : 'Failed to accept remedy',
+                                  );
+                                });
+                              }}
+                            >
+                              Accept verified remedy
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {supportCase.outcome_receipt_id ? (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Outcome receipt {customerReference(supportCase.outcome_receipt_id)}
+                        </p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -426,6 +537,14 @@ export function OrderDetailPage(): JSX.Element {
                   No support cases yet for this order.
                 </p>
               )}
+              {returns.length > 0 ? (
+                <div className="rounded-3xl border border-border/70 bg-background/70 px-4 py-4 text-sm">
+                  <div className="font-semibold">Return request</div>
+                  <div className="mt-1 text-muted-foreground">
+                    {returns[0].status} · {returns[0].reason}
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

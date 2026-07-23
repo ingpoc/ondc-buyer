@@ -133,6 +133,12 @@ export interface BuyerSupportCase {
   created_at: string;
   updated_at: string;
   resolution_note?: string | null;
+  remedy?: {
+    type?: string;
+    amount_inr?: number;
+    message?: string;
+  } | null;
+  outcome_receipt_id?: string | null;
 }
 
 export interface ShoppingIntent {

@@ -151,20 +151,27 @@ export async function executeBuyerProtectedAction(params: {
   amountInr?: number;
   approvalId?: string;
   idempotencyKey?: string;
+  correlationId?: string;
   payload?: Record<string, unknown>;
 }) {
+  const idempotencyKey =
+    params.idempotencyKey ?? `${params.action}:${params.resourceId}:${crypto.randomUUID()}`;
+  const correlationId = params.correlationId ?? `buyer-protected:${idempotencyKey}`;
   const response = await fetch(`${TRUST_API_URL}/api/agentguard/actions/execute`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+      'X-Correlation-ID': correlationId,
+    },
     body: JSON.stringify({
       ...walletField(params.walletAddress),
       action: params.action,
       amount_inr: params.amountInr ?? 0,
       resource_id: params.resourceId,
       approval_id: params.approvalId,
-      idempotency_key:
-        params.idempotencyKey ?? `${params.action}:${params.resourceId}:${crypto.randomUUID()}`,
+      idempotency_key: idempotencyKey,
       payload: params.payload ?? {},
     }),
   });
