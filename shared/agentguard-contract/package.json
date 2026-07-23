@@ -2,12 +2,17 @@
   "name": "@aadharchain/agentguard-contract",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./decisions": {
+      "types": "./src/decisions.ts",
+      "default": "./src/decisions.ts"
     }
   }
 }

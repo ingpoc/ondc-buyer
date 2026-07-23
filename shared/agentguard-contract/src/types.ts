@@ -2,6 +2,7 @@ import type { AgentGuardAction } from "./actions";
 import type { DecisionReason } from "./reasons";
 
 export const SCHEMA_VERSION = "1";
+export const DECISION_SCHEMA_VERSION = "2";
 
 export type PrincipalRef = {
   schema_version: typeof SCHEMA_VERSION;
@@ -47,13 +48,56 @@ export type ActionRequest = {
   payload?: Record<string, unknown>;
 };
 
-export type Decision = {
-  decision: "allow" | "need_approval" | "deny";
+export const DECISION_VALUES = ["allow", "need_approval", "deny"] as const;
+
+export type DecisionValue = (typeof DECISION_VALUES)[number];
+
+/** Legacy persisted decision. New authorization responses must use DecisionV2. */
+export type DecisionV1 = {
+  decision: DecisionValue;
   reason_code: DecisionReason;
   request_hash?: string;
   approval?: Approval | null;
   receipt?: IntentReceipt | null;
 };
+
+export const REQUIRED_ACTIONS = [
+  "none",
+  "review",
+  "strong_authentication",
+  "contact_support",
+] as const;
+
+export type RequiredAction = (typeof REQUIRED_ACTIONS)[number];
+
+export const RISK_LEVELS = [
+  "read_only",
+  "low",
+  "medium",
+  "high",
+  "critical",
+] as const;
+
+export type RiskLevel = (typeof RISK_LEVELS)[number];
+
+export type DecisionV2 = {
+  schema_version: typeof DECISION_SCHEMA_VERSION;
+  decision_id: string;
+  policy_id: string;
+  decision: DecisionValue;
+  reason_code: DecisionReason;
+  human_reason: string;
+  required_action: RequiredAction;
+  risk_level: RiskLevel;
+  policy_version: number;
+  expires_at: string;
+  request_hash?: string;
+  approval?: Approval | null;
+  receipt?: IntentReceipt | null;
+};
+
+/** The live contract is V2. DecisionV1 exists only for stored-data compatibility. */
+export type Decision = DecisionV2;
 
 export type Approval = {
   approval_id: string;
@@ -67,7 +111,7 @@ export type Approval = {
   mandate_version: number;
   policy_version: number;
   nonce: string;
-  status: "issued" | "consumed" | "expired";
+  status: "issued" | "consumed" | "expired" | "revoked";
   expires_at: string;
   created_at: string;
   consumed_at?: string;

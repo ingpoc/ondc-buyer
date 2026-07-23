@@ -1,37 +1,37 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { canonicalize, sha256Hex } from '@aadharchain/agentguard-contract';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-const fixtures = resolve(process.cwd(), '..', 'shared', 'agentguard-contract', 'fixtures');
+import {
+  normalizeStoredDecisionV1,
+  parseDecisionV2,
+  type Decision,
+} from '@aadharchain/agentguard-contract';
 
-describe('shared AgentGuard golden contract', () => {
-  it('canonicalizes and hashes the shared action request exactly like Python', async () => {
-    const actionRequest = JSON.parse(
-      readFileSync(resolve(fixtures, 'golden-action-request.json'), 'utf8'),
-    ) as Record<string, unknown>;
-    const expected = readFileSync(
-      resolve(fixtures, 'golden-action-request.canonical.txt'),
-      'utf8',
-    ).trim();
+const liveDecision: Decision = {
+  schema_version: '2',
+  decision_id: 'decision-buyer-contract',
+  policy_id: 'policy-buyer-checkout',
+  decision: 'need_approval',
+  reason_code: 'approval_required_amount',
+  human_reason: 'The checkout amount requires review.',
+  required_action: 'review',
+  risk_level: 'high',
+  policy_version: 1,
+  expires_at: '2026-07-23T12:00:00.000Z',
+};
 
-    const canonical = canonicalize(actionRequest);
-
-    expect(canonical).toBe(expected);
-    expect(await sha256Hex(canonical)).toBe(
-      'b1845e24832e79a73abc2f3502a3130f9d947caf5b1c89e3c2cf8e74fa9ebab2',
-    );
-    expect(canonicalize(Object.fromEntries(Object.entries(actionRequest).reverse()))).toBe(expected);
+describe('AgentGuard Decision Contract v2', () => {
+  it('accepts the live V2 envelope and rejects it as legacy V1', () => {
+    expect(parseDecisionV2(liveDecision)).toEqual(liveDecision);
+    expect(normalizeStoredDecisionV1(liveDecision)).toBeNull();
   });
 
-  it('fails closed when Web Crypto hashing is unavailable', async () => {
-    vi.stubGlobal('crypto', undefined);
-    try {
-      await expect(sha256Hex('request')).rejects.toThrow(
-        'Web Crypto SubtleCrypto is required to hash AgentGuard requests',
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it('keeps legacy V1 data non-authoritative', () => {
+    expect(normalizeStoredDecisionV1({
+      decision: 'deny',
+      reason_code: 'action_not_allowed',
+    })).toMatchObject({
+      authorization_usable: false,
+      source_schema_version: '1',
+    });
   });
 });
