@@ -6,7 +6,7 @@
   "description": "ONDC UCP Buyer Portal - Vite + React + TypeScript",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node ../scripts/check-production-copy.mjs dist ../aadharchain/gateway/main.py ../aadharchain/gateway/app/ondc_bpp.py",
+    "build": "tsc && vite build && node scripts/check-workspace-production-copy.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -29,3 +29,6 @@ Thumbs.db
 .vercel
 .env*
 .env.production.local
+
+# Local MCP configuration
+.mcp.json
