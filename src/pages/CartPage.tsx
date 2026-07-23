@@ -4,6 +4,7 @@ import { useCart, useSubject, useTrustState } from '../hooks';
 import { CartItem, CartSummary } from '../components/CartComponents';
 import { TrustNotice } from '../components/TrustStatus';
 import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
+import { clearCheckoutOutcome } from '../lib/checkoutOutcome';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
@@ -32,6 +33,7 @@ export function CartPage(): JSX.Element {
   } = useCart();
 
   function handleCheckout(): void {
+    clearCheckoutOutcome();
     navigate('/checkout');
   }
 

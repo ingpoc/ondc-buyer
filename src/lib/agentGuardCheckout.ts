@@ -46,6 +46,7 @@ export async function evaluateBuyerCheckout(params: {
   amountInr: number;
   quoteId: string;
   correlationId: string;
+  deliveryContext?: Record<string, string>;
 }): Promise<BuyerCheckoutDecision> {
   const response = await fetch(`${TRUST_API_URL}/api/agentguard/actions/evaluate`, {
     method: 'POST',
@@ -59,7 +60,10 @@ export async function evaluateBuyerCheckout(params: {
       action: LEGACY_ACTION_ALIASES.checkout,
       amount_inr: params.amountInr,
       resource_id: params.quoteId,
-      payload: { quote_id: params.quoteId },
+      payload: {
+        quote_id: params.quoteId,
+        delivery_context: params.deliveryContext,
+      },
     }),
   });
   const data = await parseData<{
@@ -106,6 +110,7 @@ export async function executeBuyerCheckout(params: {
   approvalId?: string;
   idempotencyKey?: string;
   paymentOutcome?: 'succeeded' | 'failed' | 'unknown';
+  deliveryContext?: Record<string, string>;
 }) {
   const response = await fetch(`${TRUST_API_URL}/api/agentguard/actions/execute`, {
     method: 'POST',
@@ -126,6 +131,7 @@ export async function executeBuyerCheckout(params: {
       payload: {
         quote_id: params.quoteId,
         payment_outcome: params.paymentOutcome ?? 'succeeded',
+        delivery_context: params.deliveryContext,
       },
     }),
   });

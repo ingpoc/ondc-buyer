@@ -658,6 +658,12 @@ export function OrderDetailPage(): JSX.Element {
                   <span>{order.fulfillment.providerName}</span>
                 </div>
               ) : null}
+              {order.fulfillment?.tracking?.id ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Tracking ID</span>
+                  <span className="font-mono text-xs">{order.fulfillment.tracking.id}</span>
+                </div>
+              ) : null}
               {order.fulfillment?.tracking?.statusMessage ? (
                 <p className="rounded-3xl bg-muted/70 px-4 py-3 text-muted-foreground">
                   {order.fulfillment.tracking.statusMessage}

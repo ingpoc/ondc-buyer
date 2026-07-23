@@ -519,11 +519,23 @@ export function CheckoutPage() {
 
       const prepared = preparedCheckout;
       const amountInr = prepared.quote.landed_total_paise / 100;
+      const deliveryContext = {
+        name: session.buyer?.name?.trim() || '',
+        email: (session.buyer?.contact?.email || session.buyer?.email || '').trim(),
+        phone: (session.buyer?.contact?.phone || session.buyer?.phone || '').trim(),
+        line1: deliveryAddress.line1?.trim() || '',
+        line2: deliveryAddress.line2?.trim() || '',
+        city: deliveryAddress.city?.trim() || '',
+        state: deliveryAddress.state?.trim() || '',
+        postalCode: (deliveryAddress.postalCode || deliveryAddress.pincode || '').trim(),
+        country: deliveryAddress.country?.trim() || 'IND',
+      };
       const decision = await evaluateBuyerCheckout({
         walletAddress: principal,
         amountInr,
         quoteId: prepared.quote.quote_id,
         correlationId: prepared.correlationId,
+        deliveryContext,
       });
       const request: CheckoutExecutionRequest = {
         walletAddress: principal,
@@ -533,6 +545,7 @@ export function CheckoutPage() {
         decisionId: decision.decision_id,
         correlationId: prepared.correlationId,
         idempotencyKey: `${prepared.attemptId}:execute`,
+        deliveryContext,
         runOndc: !COMMERCE_DEMO_MODE,
       };
 
