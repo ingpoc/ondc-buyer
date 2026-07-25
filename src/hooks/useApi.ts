@@ -83,7 +83,7 @@ export function useApi<T>(
         // No-demo: ONDC network catalogs only (no mock grocery invent).
         const [, query = ''] = endpoint.split('?');
         const params = new URLSearchParams(query);
-        const q = params.get('q') || params.get('query') || 'grocery';
+        const q = params.get('q') ?? params.get('query') ?? '';
         const category = (params.get('category') || 'grocery').trim().toLowerCase();
         let sharedTxn = (params.get('ondc_txn') || '').trim();
         // Samantha early-nav lands without ondc_txn. If Seller-published offers

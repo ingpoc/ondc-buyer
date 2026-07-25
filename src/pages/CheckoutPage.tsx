@@ -235,6 +235,20 @@ export function checkoutFormReady(
   );
 }
 
+export function checkoutActionDisabled({
+  submitting,
+  trustBlocksCheckout,
+  formReady,
+  authorizationReady,
+}: {
+  submitting: boolean;
+  trustBlocksCheckout: boolean;
+  formReady: boolean;
+  authorizationReady: boolean;
+}): boolean {
+  return submitting || trustBlocksCheckout || !formReady || !authorizationReady;
+}
+
 function CartSummary({ currency, formReady }: { currency: string; formReady: boolean }) {
   const { session, subtotal } = useCart();
 
@@ -637,7 +651,15 @@ export function CheckoutPage() {
   const shoppingLimitDirty =
     savedCheckoutAutoMax !== null && checkoutAutoMax !== savedCheckoutAutoMax;
   const formReady = checkoutFormReady(session, deliveryAddress);
-  const actionDisabled = submitting || trustBlocksCheckout || !formReady;
+  const mandateReady =
+    mandateStatus === 'active' && savedCheckoutAutoMax !== null && !shoppingLimitDirty;
+  const mandateRequired = preparedCheckout !== null && !mandateReady;
+  const actionDisabled = checkoutActionDisabled({
+    submitting,
+    trustBlocksCheckout,
+    formReady,
+    authorizationReady: !mandateRequired,
+  });
   const checkoutItems = (session?.items ?? []).map((entry) => entry.item as UCPItem);
   const sellerNames = Array.from(
     new Set(checkoutItems.map((item) => sellerDisplayName(item.provider?.name, item._provider))),
@@ -923,7 +945,9 @@ export function CheckoutPage() {
                       <p>
                         {trustBlocksCheckout
                           ? trust.reason || 'Sign in to continue.'
-                          : 'Please complete billing and the delivery address before continuing.'}
+                          : mandateRequired
+                            ? 'Save the shopping limit before authorizing this exact total.'
+                            : 'Please complete billing and the delivery address before continuing.'}
                       </p>
                     </div>
                   ) : null}

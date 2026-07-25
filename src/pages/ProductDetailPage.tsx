@@ -38,7 +38,7 @@ export function ProductDetailPage(): JSX.Element {
   }, [execute]);
 
   async function handleAddToCart(): Promise<void> {
-    if (!data) return;
+    if (!data || data.quantity === 0) return;
 
     setAddingToCart(true);
     setCartMessage('');
@@ -83,6 +83,7 @@ export function ProductDetailPage(): JSX.Element {
   }
 
   const title = data.name ?? data.descriptor?.name ?? 'Product';
+  const outOfStock = data.quantity === 0;
   const price = `${data.price?.currency} ${data.price?.value ?? data.price?.amount ?? '0'}`;
   const sellerName = sellerDisplayName(data.provider?.name, data._provider);
   const specs = [
@@ -177,6 +178,7 @@ export function ProductDetailPage(): JSX.Element {
                   min={1}
                   max={data.quantity && data.quantity > 0 ? data.quantity : undefined}
                   value={quantity}
+                  disabled={outOfStock}
                   onChange={(event) => {
                     const next = Math.max(1, Number(event.target.value) || 1);
                     setQuantity(data.quantity && data.quantity > 0 ? Math.min(next, data.quantity) : next);
@@ -194,10 +196,10 @@ export function ProductDetailPage(): JSX.Element {
                     void handleAddToCart();
                   }
                 }}
-                disabled={addingToCart}
+                disabled={addingToCart || outOfStock}
               >
                 <ShoppingCart className="size-4" />
-                {addingToCart ? 'Adding...' : 'Add to cart'}
+                {outOfStock ? 'Out of stock' : addingToCart ? 'Adding...' : 'Add to cart'}
               </Button>
               {cartMessage ? (
                 <div className="flex flex-wrap items-center gap-3" role="status" aria-live="polite">

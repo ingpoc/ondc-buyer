@@ -5,6 +5,7 @@ import { ProductDetailPage } from './ProductDetailPage';
 
 const execute = vi.fn();
 const addToCart = vi.fn();
+const productState = vi.hoisted(() => ({ quantity: 7 }));
 
 vi.mock('../hooks', () => ({
   useApi: () => ({
@@ -15,7 +16,7 @@ vi.mock('../hooks', () => ({
       price: { currency: 'INR', value: '149.00' },
       images: [],
       category: 'Grocery',
-      quantity: 7,
+      quantity: productState.quantity,
       provider: { id: 'seller-1', name: 'Fresh Farm Foods' },
       deliveryEstimate: '2-4 business days',
       returnPolicy: 'Sealed packs may be returned within 7 days.',
@@ -32,6 +33,7 @@ describe('ProductDetailPage decision context', () => {
     execute.mockReset();
     addToCart.mockReset();
     addToCart.mockResolvedValue(undefined);
+    productState.quantity = 7;
   });
 
   it('exposes a page heading, seller terms, unit price, and quantity choice', async () => {
@@ -73,5 +75,21 @@ describe('ProductDetailPage decision context', () => {
 
     await waitFor(() => expect(addToCart).toHaveBeenCalledWith(expect.objectContaining({ id: 'item-1' }), 1));
     expect(await screen.findByText('1 item added to cart.')).toBeInTheDocument();
+  });
+
+  it('disables quantity and purchase controls when stock is zero', () => {
+    productState.quantity = 0;
+
+    render(
+      <MemoryRouter initialEntries={['/products/item-1']}>
+        <Routes>
+          <Route path="/products/:id" element={<ProductDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('spinbutton', { name: 'Quantity' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Out of stock' })).toBeDisabled();
+    expect(addToCart).not.toHaveBeenCalled();
   });
 });

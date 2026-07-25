@@ -152,17 +152,29 @@ export function ResultGrid({
           </CardContent>
 
           <CardFooter className="gap-3 border-t border-border/70 pt-5">
-            <Button type="button" variant="outline" className="flex-1 rounded-full" onClick={() => onItemClick?.(item)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 rounded-full"
+              aria-label={`View details for ${item.name ?? item.descriptor?.name ?? 'product'}`}
+              onClick={() => onItemClick?.(item)}
+            >
               View details
             </Button>
             {onAddToCart ? (
               <Button
                 type="button"
                 className="rounded-full"
+                aria-label={
+                  item.quantity === 0
+                    ? `${item.name ?? item.descriptor?.name ?? 'Product'} is out of stock`
+                    : `Add ${item.name ?? item.descriptor?.name ?? 'product'} to cart`
+                }
                 onClick={() => onAddToCart(item)}
+                disabled={item.quantity === 0}
               >
                 <ShoppingCart className="size-4" />
-                Add
+                {item.quantity === 0 ? 'Out of stock' : 'Add'}
               </Button>
             ) : null}
           </CardFooter>

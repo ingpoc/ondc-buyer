@@ -30,6 +30,33 @@ describe('useApi product detail', () => {
 });
 
 describe('useApi local search dependency boundary', () => {
+  it('preserves an empty query so browse-all returns categorized catalog items', async () => {
+    const item: UCPItem = {
+      id: 'published-atta-item',
+      name: 'PreProd Test Atta 1 kg',
+      descriptor: { name: 'PreProd Test Atta 1 kg' },
+      category: 'Grocery',
+      price: { currency: 'INR', value: '89.00' },
+      images: [],
+    };
+    const networkReady = vi.spyOn(protocolClient, 'isOndcNetworkSearchReady').mockResolvedValue(true);
+    const localSearch = vi.spyOn(commerceClient, 'searchCommerceItems').mockResolvedValue({
+      items: [item],
+      totalCount: 1,
+      __source: 'api',
+    });
+
+    const { result } = renderHook(() => useApi<{ items: UCPItem[]; totalCount: number }>('/api/search?category=grocery&q='));
+    await act(async () => {
+      await result.current.execute();
+    });
+
+    expect(networkReady).not.toHaveBeenCalled();
+    expect(localSearch).toHaveBeenCalledWith('');
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.items).toEqual([item]);
+  });
+
   it('returns the local shared catalog without waiting for external network search', async () => {
     const networkReady = vi.spyOn(protocolClient, 'isOndcNetworkSearchReady').mockResolvedValue(true);
     const localSearch = vi.spyOn(commerceClient, 'searchCommerceItems').mockResolvedValue({

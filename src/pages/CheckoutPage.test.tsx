@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { UCPAddress } from '../types';
 import {
+  checkoutActionDisabled,
   checkoutFormReady,
   checkoutDecisionStep,
   DeliveryAddressForm,
@@ -63,6 +64,26 @@ describe('checkout form readiness', () => {
     expect(checkoutFormReady(session, completeAddress)).toBe(true);
     expect(checkoutFormReady(session, { ...completeAddress, postalCode: '4110' })).toBe(false);
     expect(checkoutFormReady({ buyer: { ...session.buyer, name: '' } }, completeAddress)).toBe(false);
+  });
+
+  it('keeps exact authorization disabled until the shopping mandate is saved', () => {
+    expect(
+      checkoutActionDisabled({
+        submitting: false,
+        trustBlocksCheckout: false,
+        formReady: true,
+        authorizationReady: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      checkoutActionDisabled({
+        submitting: false,
+        trustBlocksCheckout: false,
+        formReady: true,
+        authorizationReady: true,
+      }),
+    ).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { UCPItem } from '../types';
 import { ResultGrid } from './ResultGrid';
 
@@ -21,5 +21,22 @@ describe('ResultGrid customer-facing seller labels', () => {
     expect(screen.getByText('Estimate not supplied')).toBeInTheDocument();
     expect(screen.getByText('Delivers to Pune')).toBeInTheDocument();
     expect(screen.queryByText(/principal:demo:/i)).not.toBeInTheDocument();
+  });
+
+  it('prevents adding a zero-stock offer and names repeated actions by product', () => {
+    const onAddToCart = vi.fn();
+    const item = {
+      id: 'item-2',
+      name: 'Unavailable atta',
+      price: { currency: 'INR', value: '149' },
+      images: [],
+      quantity: 0,
+    } as UCPItem;
+
+    render(<ResultGrid items={[item]} onAddToCart={onAddToCart} />);
+
+    expect(screen.getByRole('button', { name: 'View details for Unavailable atta' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Unavailable atta is out of stock' })).toBeDisabled();
+    expect(onAddToCart).not.toHaveBeenCalled();
   });
 });
