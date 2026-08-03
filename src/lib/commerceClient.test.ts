@@ -145,8 +145,22 @@ describe('mapDemoOrderToBuyerOrder', () => {
       fulfilment: {
         status: 'delivered',
         tracking_id: 'CF23-TRACK-1',
+        tracking_url: 'https://logistics.example/track/CF23-TRACK-1',
         provider_name: 'Lifecycle Logistics',
         status_message: 'Delivered to the customer',
+        history: [
+          {
+            status: 'shipped',
+            recorded_at: '2026-07-23T00:30:00Z',
+            tracking_id: 'CF23-TRACK-1',
+            status_message: 'Collected from seller',
+          },
+          {
+            status: 'delivered',
+            recorded_at: '2026-07-23T01:00:00Z',
+            status_message: 'Delivered to the customer',
+          },
+        ],
       },
       created_at: '2026-07-23T00:00:00Z',
       updated_at: '2026-07-23T01:00:00Z',
@@ -158,9 +172,23 @@ describe('mapDemoOrderToBuyerOrder', () => {
       status: 'delivered',
       tracking: {
         id: 'CF23-TRACK-1',
+        url: 'https://logistics.example/track/CF23-TRACK-1',
         status: 'delivered',
         statusMessage: 'Delivered to the customer',
       },
+      history: [
+        {
+          status: 'shipped',
+          recordedAt: '2026-07-23T00:30:00Z',
+          trackingId: 'CF23-TRACK-1',
+          statusMessage: 'Collected from seller',
+        },
+        {
+          status: 'delivered',
+          recordedAt: '2026-07-23T01:00:00Z',
+          statusMessage: 'Delivered to the customer',
+        },
+      ],
     });
   });
 });

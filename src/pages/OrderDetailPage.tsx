@@ -664,10 +664,37 @@ export function OrderDetailPage(): JSX.Element {
                   <span className="font-mono text-xs">{order.fulfillment.tracking.id}</span>
                 </div>
               ) : null}
+              {order.fulfillment?.tracking?.url ? (
+                <a
+                  className="inline-flex font-medium text-primary underline-offset-4 hover:underline"
+                  href={order.fulfillment.tracking.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open verified tracking
+                </a>
+              ) : null}
               {order.fulfillment?.tracking?.statusMessage ? (
                 <p className="rounded-3xl bg-muted/70 px-4 py-3 text-muted-foreground">
                   {order.fulfillment.tracking.statusMessage}
                 </p>
+              ) : null}
+              {order.fulfillment?.history?.length ? (
+                <ol className="space-y-3 border-l border-border pl-4" data-testid="fulfillment-timeline">
+                  {order.fulfillment.history.map((event, index) => (
+                    <li key={`${event.recordedAt}-${event.status}-${index}`} className="space-y-1">
+                      <div className="font-medium">
+                        {getFulfillmentStatusLabel(event.status as UCPFulfillmentStatus)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(event.recordedAt).toLocaleString('en-IN')}
+                      </div>
+                      {event.statusMessage ? (
+                        <p className="text-muted-foreground">{event.statusMessage}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
               ) : null}
             </CardContent>
           </Card>

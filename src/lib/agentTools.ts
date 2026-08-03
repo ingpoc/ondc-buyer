@@ -13,7 +13,13 @@ import {
   rememberBuyerCatalogItems,
   waitForBuyerCatalogItems,
 } from './buyerCatalogCache';
-import { getCommerceItem, orderFromCommerceExecution, searchCommerceItems } from './commerceClient';
+import {
+  getCommerceItem,
+  getCommerceOrder,
+  listCommerceBuyerOrders,
+  orderFromCommerceExecution,
+  searchCommerceItems,
+} from './commerceClient';
 import { evaluateBuyerCheckout, executeBuyerCheckout } from './agentGuardCheckout';
 import { prepareDurableCheckout } from './commerceV1Client';
 import { writeCheckoutOutcome } from './checkoutOutcome';
@@ -251,6 +257,7 @@ function compactCachedForQuery(query: string): Array<{
 export type BuyerToolName =
   | 'search_catalog'
   | 'navigate_to'
+  | 'track_order'
   | 'add_to_cart'
   | 'clear_cart'
   | 'remove_from_cart'
@@ -372,6 +379,7 @@ export async function resolveBuyerAddTarget(args: {
 const READ_TOOLS: BuyerToolName[] = [
   'search_catalog',
   'navigate_to',
+  'track_order',
   'add_to_cart',
   'clear_cart',
   'remove_from_cart',
@@ -530,6 +538,19 @@ export const BUYER_TOOL_DEFINITIONS = [
       type: 'object',
       properties: { path: { type: 'string' } },
       required: ['path'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'track_order',
+    description:
+      'Read the latest persisted delivery status, logistics provider, tracking id, and fulfilment history for a Buyer order, then open its order detail page. Omit order_id to track the newest order.',
+    parameters: {
+      type: 'object',
+      properties: {
+        order_id: { type: 'string', description: 'Optional full order id; newest order is used when omitted.' },
+      },
+      required: [],
     },
   },
   {
@@ -823,6 +844,53 @@ export async function runBuyerTool(
       };
     }
     return { ok: true, tool: name, message: `Navigating to ${path}.`, navigateTo: path };
+  }
+
+  if (name === 'track_order') {
+    try {
+      const requestedId = String(args.order_id ?? args.orderId ?? '').trim();
+      const order = requestedId
+        ? await getCommerceOrder(requestedId)
+        : (await listCommerceBuyerOrders()).sort(
+            (left, right) => Date.parse(right.updatedAt || right.createdAt) - Date.parse(left.updatedAt || left.createdAt),
+          )[0];
+      if (!order) {
+        return { ok: false, tool: name, message: 'No Buyer orders are available to track.', navigateTo: '/orders' };
+      }
+      const provider = order.fulfillment?.providerName;
+      const trackingId = order.fulfillment?.tracking?.id;
+      const trackingUrl = order.fulfillment?.tracking?.url;
+      const statusMessage = order.fulfillment?.tracking?.statusMessage;
+      return {
+        ok: true,
+        tool: name,
+        message: [
+          `Order ${order.id} is ${order.fulfillment?.tracking?.status || order.status}.`,
+          provider ? `Delivery provider: ${provider}.` : '',
+          trackingId ? `Tracking ID: ${trackingId}.` : '',
+          trackingUrl ? `Verified tracking: ${trackingUrl}.` : '',
+          statusMessage || '',
+        ].filter(Boolean).join(' '),
+        data: {
+          order_id: order.id,
+          order_status: order.status,
+          fulfillment_status: order.fulfillment?.tracking?.status || order.fulfillment?.status,
+          provider_name: provider,
+          tracking_id: trackingId,
+          tracking_url: trackingUrl,
+          status_message: statusMessage,
+          history: order.fulfillment?.history ?? [],
+        },
+        navigateTo: `/orders/${order.id}`,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        tool: name,
+        message: error instanceof Error ? error.message : 'Could not load order tracking.',
+        navigateTo: '/orders',
+      };
+    }
   }
 
   if (name === 'delegate_to_runtime_agent') {

@@ -43,6 +43,7 @@ function walletField(walletAddress?: string | null): Record<string, string> {
 /** Evaluate elevated checkout; consume approval if already issued. */
 export async function evaluateBuyerCheckout(params: {
   walletAddress?: string | null;
+  actor?: 'agent' | 'user';
   amountInr: number;
   quoteId: string;
   correlationId: string;
@@ -57,6 +58,7 @@ export async function evaluateBuyerCheckout(params: {
     },
     body: JSON.stringify({
       ...walletField(params.walletAddress),
+      actor: params.actor ?? 'agent',
       action: LEGACY_ACTION_ALIASES.checkout,
       amount_inr: params.amountInr,
       resource_id: params.quoteId,
@@ -104,6 +106,7 @@ export async function consumeBuyerCheckoutApproval(params: {
 /** Preferred mutation boundary for checkout commit. */
 export async function executeBuyerCheckout(params: {
   walletAddress?: string | null;
+  actor?: 'agent' | 'user';
   quoteId: string;
   decisionId: string;
   correlationId: string;
@@ -122,6 +125,7 @@ export async function executeBuyerCheckout(params: {
     },
     body: JSON.stringify({
       ...walletField(params.walletAddress),
+      actor: params.actor ?? 'agent',
       action: LEGACY_ACTION_ALIASES.checkout,
       amount_inr: 0,
       resource_id: params.quoteId,

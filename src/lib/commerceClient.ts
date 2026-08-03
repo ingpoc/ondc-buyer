@@ -41,6 +41,7 @@ export interface DemoCommerceOrder {
   fulfilment?: {
     status?: string;
     tracking_id?: string;
+    tracking_url?: string;
     provider_name?: string;
     status_message?: string;
     history?: Array<{
@@ -213,6 +214,9 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
                 : 'pending',
       tracking: {
         id: order.fulfilment?.tracking_id,
+        url: order.fulfilment?.tracking_url?.startsWith('https://')
+          ? order.fulfilment.tracking_url
+          : undefined,
         status: order.fulfilment?.status || status,
         statusMessage:
           order.fulfilment?.status_message ||
@@ -220,6 +224,12 @@ export function mapDemoOrderToBuyerOrder(order: DemoCommerceOrder): UCPOrder {
             ? 'Order is awaiting seller confirmation.'
             : 'The latest seller fulfilment update is shown here.'),
       },
+      history: order.fulfilment?.history?.map((event) => ({
+        status: event.status,
+        recordedAt: event.recorded_at,
+        trackingId: event.tracking_id,
+        statusMessage: event.status_message,
+      })),
     },
     deliveryAddress: order.delivery_address,
     payment: paymentStatus

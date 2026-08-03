@@ -34,7 +34,7 @@ const BUYER_ORB_INSTRUCTIONS =
   'Find / search / show / need / looking for products: ALWAYS call search_catalog for that product in THIS turn — even if Host context still shows a previous query’s offers. It opens /results so they watch offers load. Stop after search; do NOT call add_to_cart for “I need X” / “find X” / “show X” phrasing. Only add_to_cart when they explicitly say add, put in cart, buy, or checkout a listed item. ' +
   'Never name a product, price, or count from memory or a prior turn. Only describe offers returned by the latest search_catalog tool result or Host visible_results for the CURRENT query. ' +
   'search_catalog may apply saved likes and shopping preferences only when relevant to this product; briefly name applied filters and never claim an unrelated preference was used. ' +
-  'Cart is app state, never a catalog product. For “show/open my cart”, checkout, orders, or config, call navigate_to to that path and never search_catalog. ' +
+  'Cart is app state, never a catalog product. For “show/open my cart”, checkout, orders, or config, call navigate_to to that path and never search_catalog. For delivery status, courier, or tracking questions call track_order. ' +
   'Add to cart (only after an explicit add/buy request): if Host context lists cached offers for the current query OR /results already shows those offers, call add_to_cart with item_id or query — never claim the catalog is empty when Host context has items for this query, and do NOT search again. ' +
   'Only search_catalog before add when they asked to add and there is no Host context and no results yet. They land on /cart with the line visible. ' +
   'Cart changes: use clear_cart to empty it, remove_from_cart for one line, and set_cart_quantity to change a quantity. Never say you lack these actions. ' +
@@ -46,7 +46,7 @@ const BUYER_ORB_INSTRUCTIONS =
   'Chain short tools in one turn when needed. Continue after each function_call_output until the short request is done. ' +
   'If the user asks for cart/checkout/orders while a search is running, call navigate_to and STOP — do not retry search_catalog after a timeout or navSuperseded. ' +
   'Long planning (weekly plan, budget, research): call delegate_to_runtime_agent once; say you started and will update them — never mention Cursor or /agent. ' +
-  'Never invent work. Short tools: search_catalog, navigate_to, add_to_cart, clear_cart, remove_from_cart, set_cart_quantity, fill_checkout, remember_preference, checkout_commit.';
+  'Never invent work. Short tools: search_catalog, navigate_to, track_order, add_to_cart, clear_cart, remove_from_cart, set_cart_quantity, fill_checkout, remember_preference, checkout_commit.';
 
 function looksLikeCatalogFind(text: string): boolean {
   const trimmed = text.trim();

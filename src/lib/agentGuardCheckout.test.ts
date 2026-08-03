@@ -172,6 +172,8 @@ describe('Buyer AgentGuard controls', () => {
 
     const evaluateBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     const executeBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(evaluateBody.actor).toBe('agent');
+    expect(executeBody.actor).toBe('agent');
     expect(evaluateBody.payload).toEqual({ quote_id: 'quote-1' });
     expect(executeBody.payload).toEqual({
       quote_id: 'quote-1',

@@ -11,7 +11,12 @@ import {
   runBuyerTool,
 } from './agentTools';
 import { clearBuyerCatalogCache } from './buyerCatalogCache';
-import { searchCommerceItems, getCommerceItem } from './commerceClient';
+import {
+  searchCommerceItems,
+  getCommerceItem,
+  getCommerceOrder,
+  listCommerceBuyerOrders,
+} from './commerceClient';
 import { evaluateBuyerCheckout, executeBuyerCheckout } from './agentGuardCheckout';
 import { prepareDurableCheckout } from './commerceV1Client';
 
@@ -20,6 +25,8 @@ vi.mock('./commerceClient', () => ({
   getCommerceItem: vi.fn(async (itemId: string) => {
     throw new Error(`Unknown item: ${itemId}`);
   }),
+  getCommerceOrder: vi.fn(),
+  listCommerceBuyerOrders: vi.fn(async () => []),
   orderFromCommerceExecution: vi.fn(() => null),
 }));
 
@@ -301,6 +308,87 @@ describe('buyer agent tools cart path', () => {
     expect(result.ok).toBe(true);
     expect(result.cartChanges).toEqual([{ action: 'clear' }]);
     expect(result.navigateTo).toBe('/cart');
+  });
+
+  it('track_order returns persisted vendor and history for the newest Buyer order', async () => {
+    vi.mocked(listCommerceBuyerOrders).mockResolvedValueOnce([
+      {
+        id: 'order-older',
+        status: 'created',
+        createdAt: '2026-07-23T00:00:00Z',
+        items: [],
+      },
+      {
+        id: 'order-latest',
+        status: 'shipped',
+        createdAt: '2026-07-23T01:00:00Z',
+        updatedAt: '2026-07-23T02:00:00Z',
+        items: [],
+        fulfillment: {
+          type: 'delivery',
+          status: 'in_transit',
+          providerName: 'Lifecycle Logistics',
+          tracking: {
+            id: 'TRACK-1',
+            url: 'https://logistics.example/track/TRACK-1',
+            status: 'shipped',
+            statusMessage: 'Collected from seller',
+          },
+          history: [
+            {
+              status: 'shipped',
+              recordedAt: '2026-07-23T02:00:00Z',
+              trackingId: 'TRACK-1',
+              statusMessage: 'Collected from seller',
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await runBuyerTool('track_order', {}, { subjectId: 'principal:demo:test' });
+
+    expect(getCommerceOrder).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      ok: true,
+      navigateTo: '/orders/order-latest',
+      data: {
+        order_id: 'order-latest',
+        provider_name: 'Lifecycle Logistics',
+        tracking_id: 'TRACK-1',
+        tracking_url: 'https://logistics.example/track/TRACK-1',
+        history: [{ status: 'shipped', trackingId: 'TRACK-1' }],
+      },
+    });
+    expect(result.message).toContain('Verified tracking: https://logistics.example/track/TRACK-1.');
+  });
+
+  it('track_order reads a requested order without inventing missing logistics data', async () => {
+    vi.mocked(getCommerceOrder).mockResolvedValueOnce({
+      id: 'order-created',
+      status: 'created',
+      createdAt: '2026-07-23T00:00:00Z',
+      items: [],
+      fulfillment: {
+        type: 'delivery',
+        status: 'pending',
+        tracking: { status: 'created', statusMessage: 'Awaiting seller confirmation.' },
+      },
+    });
+
+    const result = await runBuyerTool(
+      'track_order',
+      { order_id: 'order-created' },
+      { subjectId: 'principal:demo:test' },
+    );
+
+    expect(getCommerceOrder).toHaveBeenCalledWith('order-created');
+    expect(result.data).toMatchObject({
+      order_id: 'order-created',
+      provider_name: undefined,
+      tracking_id: undefined,
+    });
+    expect(result.message).not.toMatch(/provider|tracking ID/i);
   });
 
   it('remove_from_cart resolves a first-time user product phrase from live cart context', async () => {

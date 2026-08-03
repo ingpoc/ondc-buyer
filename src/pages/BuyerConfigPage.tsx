@@ -177,7 +177,7 @@ export function BuyerConfigPage() {
       setAgent(result.agent);
       setNote(
         shouldPause
-          ? 'Agent paused. The next protected action will be blocked.'
+          ? 'Agent paused. Samantha cannot checkout; you can still checkout yourself.'
           : 'Agent resumed. Protected actions may run within the mandate.'
       );
     } catch (err) {

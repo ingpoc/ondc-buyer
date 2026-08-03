@@ -157,6 +157,12 @@ export interface UCPFulfillment {
     statusMessage?: string;
     estimatedDelivery?: string;
   };
+  history?: Array<{
+    status: string;
+    recordedAt: string;
+    trackingId?: string;
+    statusMessage?: string;
+  }>;
   agent?: {
     name?: string;
     phone?: string;

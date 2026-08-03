@@ -546,6 +546,7 @@ export function CheckoutPage() {
       };
       const decision = await evaluateBuyerCheckout({
         walletAddress: principal,
+        actor: 'user',
         amountInr,
         quoteId: prepared.quote.quote_id,
         correlationId: prepared.correlationId,
@@ -553,6 +554,7 @@ export function CheckoutPage() {
       });
       const request: CheckoutExecutionRequest = {
         walletAddress: principal,
+        actor: 'user',
         subjectId,
         amountInr,
         quoteId: prepared.quote.quote_id,
@@ -913,7 +915,7 @@ export function CheckoutPage() {
                           : 'Not saved'}
                     </Badge>
                     <Badge variant="outline" className="rounded-full">
-                      Pause blocks the next protected checkout
+                      Shopping agent paused; manual checkout remains available
                     </Badge>
                   </div>
                 </CardContent>
