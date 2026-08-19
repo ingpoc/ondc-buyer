@@ -186,7 +186,7 @@ export function BuyerConfigPage() {
         agentId: agent.agent_id,
         paused: shouldPause,
       });
-      setAgent(result.agent);
+      setAgent(getBuyerAgentAuthority().agent ?? result.agent);
       setNote(
         shouldPause
           ? 'Agent paused. Samantha cannot checkout; you can still checkout yourself.'
