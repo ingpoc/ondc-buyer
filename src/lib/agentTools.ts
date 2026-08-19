@@ -1234,7 +1234,7 @@ export async function runBuyerTool(
         ? 'Checkout requires exact one-time approval.'
         : decision === 'deny'
           ? 'Checkout denied by AgentGuard.'
-          : `Checkout committed${receiptId ? `; receipt ${receiptId}` : ''}.`;
+          : `Checkout committed${receiptId ? `; Intent Receipt ${receiptId}` : ''}.`;
 
     let orderId: string | null = null;
     let navigateTo = '/checkout';

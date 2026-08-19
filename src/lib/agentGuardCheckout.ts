@@ -199,6 +199,7 @@ export async function executeBuyerProtectedAction(params: {
   return execution ? { ...data, execution } : data;
 }
 
+/** Verify an Intent Receipt. Must not pause/resume agent authority. */
 export async function verifyBuyerReceipt(params: { receiptId: string }) {
   const response = await fetch(`${TRUST_API_URL}/api/agentguard/receipts/verify`, {
     method: 'POST',
@@ -270,9 +271,9 @@ export async function ensureBuyerAgent(walletAddress?: string | null) {
   }>(response);
 }
 
+/** Read-only AgentGuard status. Must not ensure/resume — pause is exclusive to the Resume control. */
 export async function fetchBuyerAgentGuardStatus(walletAddress?: string | null) {
   const isLegacyWallet = Boolean(walletAddress && !walletAddress.startsWith('principal:'));
-  if (isLegacyWallet) await ensureBuyerAgent(walletAddress);
   const path = isLegacyWallet
     ? `/api/agentguard/wallets/${encodeURIComponent(walletAddress as string)}`
     : '/api/agentguard/agents/current?role=buyer';

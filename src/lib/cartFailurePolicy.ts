@@ -27,8 +27,24 @@ export function formatCartApiError(error: unknown, action: string): string {
   return `${action} failed against the commerce API: ${detail}`;
 }
 
-/** Remote cart missing (404) → use local session store; other errors stay hard failures. */
+/** Remote cart missing (404) or unauthorized → use local session store; other errors stay hard failures. */
 export function shouldFallbackLocalOnCartError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /Request failed: 404\b|Failed to fetch|NetworkError/i.test(message);
+  return /Request failed: (401|403|404)\b|Failed to fetch|NetworkError/i.test(message);
+}
+
+export function remoteCartContainsItem(
+  session: { items?: Array<{ item?: { id?: string } }> } | null | undefined,
+  itemId: string,
+): boolean {
+  return Boolean(session?.items?.some((entry) => entry.item?.id === itemId));
+}
+
+export function cartAddNotice(params: { title: string; authenticated: boolean }): string {
+  const added = `${params.title} added to cart.`;
+  return params.authenticated ? added : `${added} Sign in to check out.`;
+}
+
+export function cartAddBlockedNotice(): string {
+  return 'Sign in to add items and check out.';
 }

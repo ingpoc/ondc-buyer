@@ -13,12 +13,15 @@ import {
   compileBuyerMandate,
   clearPurchasedCart,
   confirmBuyerMandate,
-  ensureBuyerAgent,
+  fetchBuyerAgentGuardStatus,
   evaluateBuyerCheckout,
   executeBuyerCheckout,
   verifyBuyerReceipt,
   type BuyerCheckoutDecision,
 } from '../lib/agentGuardCheckout';
+import type { AgentRef } from '@aadharchain/agentguard-contract';
+import { useAuthContext } from '../contexts/AuthContext';
+import { useAuthProviders } from '../lib/authProviders';
 import {
   clearCheckoutOutcome,
   readCheckoutOutcome,
@@ -31,7 +34,7 @@ import {
   CHECKOUT_PREFILL_EVENT,
   type CheckoutPrefillDetail,
 } from '../lib/checkoutPrefill';
-import { customerReference, sellerDisplayName } from '../lib/displayText';
+import { customerReference, intentReceiptLabel, sellerDisplayName } from '../lib/displayText';
 import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import type { UCPAddress, UCPItem, UCPQuote, UCPSession } from '../types';
 import { Badge } from '../components/ui/badge';
@@ -151,11 +154,13 @@ export function ExactApprovalReview({
 interface DeliveryAddressFormProps {
   address: UCPAddress;
   onChange: (address: UCPAddress) => void;
+  onPersist?: (address: UCPAddress) => void;
 }
 
-export function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormProps) {
+export function DeliveryAddressForm({ address, onChange, onPersist }: DeliveryAddressFormProps) {
   const handleChange = (field: keyof UCPAddress, value: string) => {
-    onChange({ ...address, [field]: value });
+    const nextValue = field === 'state' || field === 'city' ? collapseDuplicatedRegion(value) : value;
+    onChange({ ...address, [field]: nextValue });
   };
 
   return (
@@ -172,9 +177,12 @@ export function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormPr
             <FieldLabel htmlFor="delivery-line1">Street address *</FieldLabel>
             <Input
               id="delivery-line1"
+              name="address-line1"
+              autoComplete="address-line1"
               required
               value={address.line1 || ''}
               onChange={(event) => handleChange('line1', event.target.value)}
+              onBlur={() => onPersist?.(address)}
               placeholder="123 Main Street, Apt 4B"
             />
           </Field>
@@ -183,9 +191,12 @@ export function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormPr
               <FieldLabel htmlFor="delivery-city">City *</FieldLabel>
               <Input
                 id="delivery-city"
+                name="address-level2"
+                autoComplete="address-level2"
                 required
                 value={address.city || ''}
                 onChange={(event) => handleChange('city', event.target.value)}
+                onBlur={() => onPersist?.(address)}
                 placeholder="Bangalore"
               />
             </Field>
@@ -193,9 +204,12 @@ export function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormPr
               <FieldLabel htmlFor="delivery-state">State *</FieldLabel>
               <Input
                 id="delivery-state"
+                name="address-level1"
+                autoComplete="address-level1"
                 required
                 value={address.state || ''}
                 onChange={(event) => handleChange('state', event.target.value)}
+                onBlur={() => onPersist?.(address)}
                 placeholder="Karnataka"
               />
             </Field>
@@ -204,9 +218,12 @@ export function DeliveryAddressForm({ address, onChange }: DeliveryAddressFormPr
             <FieldLabel htmlFor="delivery-postal-code">Postal code *</FieldLabel>
             <Input
               id="delivery-postal-code"
+              name="postal-code"
+              autoComplete="postal-code"
               required
               value={address.postalCode || ''}
               onChange={(event) => handleChange('postalCode', event.target.value)}
+              onBlur={() => onPersist?.(address)}
               placeholder="6-digit PIN"
               pattern="[0-9]{6}"
             />
@@ -235,6 +252,29 @@ export function checkoutFormReady(
   );
 }
 
+/** Collapse accidental doubled values like "KarnatakaKarnataka". */
+export function collapseDuplicatedRegion(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 4 || trimmed.length % 2 !== 0) return trimmed;
+  const mid = trimmed.length / 2;
+  const left = trimmed.slice(0, mid);
+  const right = trimmed.slice(mid);
+  return left.toLowerCase() === right.toLowerCase() ? left : trimmed;
+}
+
+export function shouldRedirectEmptyCheckout(params: {
+  authenticated: boolean;
+  holdingDecision: boolean;
+  loading: boolean;
+  itemCount: number;
+  hadItems: boolean;
+}): boolean {
+  if (!params.authenticated || params.holdingDecision || params.loading || params.hadItems) {
+    return false;
+  }
+  return params.itemCount === 0;
+}
+
 export function checkoutActionDisabled({
   submitting,
   trustBlocksCheckout,
@@ -247,6 +287,40 @@ export function checkoutActionDisabled({
   authorizationReady: boolean;
 }): boolean {
   return submitting || trustBlocksCheckout || !formReady || !authorizationReady;
+}
+
+function CheckoutSignInLock() {
+  const { loginAuth0, loginGoogle } = useAuthContext();
+  const authProviders = useAuthProviders();
+
+  return (
+    <Card className="border-border/70 bg-card/95" data-testid="buyer-checkout-signin-lock">
+      <CardHeader className="space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Checkout locked
+        </div>
+        <CardTitle className="text-2xl">Sign in to check out</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          You can browse and add items while signed out. Sign in to authorize checkout. AgentGuard
+          will apply your spending limit after you sign in.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {authProviders.auth0 ? (
+            <Button type="button" className="rounded-full" onClick={() => loginAuth0('/checkout')}>
+              Sign in
+            </Button>
+          ) : null}
+          {!authProviders.auth0 && authProviders.google ? (
+            <Button type="button" className="rounded-full" onClick={() => loginGoogle('/checkout')}>
+              Continue with Google
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function CartSummary({ currency, formReady }: { currency: string; formReady: boolean }) {
@@ -285,7 +359,7 @@ function CartSummary({ currency, formReady }: { currency: string; formReady: boo
 
         <p className="text-sm text-muted-foreground">
           {formReady
-            ? 'Billing and delivery details are ready. Authorize below to create the order and receive the final receipt.'
+            ? 'Billing and delivery details are ready. Authorize below to create the order and receive the Intent Receipt.'
             : 'Complete billing and the delivery address to authorize this order.'}
         </p>
       </CardContent>
@@ -295,6 +369,7 @@ function CartSummary({ currency, formReady }: { currency: string; formReady: boo
 
 export function CheckoutPage() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuthContext();
   const { walletAddress, subjectId, principalId } = useSubject();
   const { session, loading, error, itemCount, refreshCart, clearCart } = useCart();
   const trust = useTrustState(walletAddress);
@@ -311,6 +386,7 @@ export function CheckoutPage() {
   const [savedCheckoutAutoMax, setSavedCheckoutAutoMax] = useState<number | null>(null);
   const [mandateBusy, setMandateBusy] = useState(false);
   const [mandateStatus, setMandateStatus] = useState<string | null>(null);
+  const [agent, setAgent] = useState<AgentRef | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState<UCPAddress>({
     line1: '',
     city: '',
@@ -319,6 +395,11 @@ export function CheckoutPage() {
     country: 'IND',
   });
   const hydratedDeliverySession = useRef<string | null>(null);
+  const hadItemsRef = useRef(false);
+
+  useEffect(() => {
+    if (itemCount > 0) hadItemsRef.current = true;
+  }, [itemCount]);
 
   useEffect(() => {
     if (!session || hydratedDeliverySession.current === session.id) return;
@@ -327,7 +408,7 @@ export function CheckoutPage() {
     setDeliveryAddress({
       line1: session.buyer?.street || '',
       city: session.buyer?.city || savedArea?.city || '',
-      state: session.buyer?.state || savedArea?.state || '',
+      state: collapseDuplicatedRegion(session.buyer?.state || savedArea?.state || ''),
       postalCode: session.buyer?.pincode || savedArea?.postalCode || '',
       country: session.buyer?.country || 'IND',
     });
@@ -338,28 +419,40 @@ export function CheckoutPage() {
     setQuote(null);
   }, [session?.id, session?.updatedAt]);
 
-  const handleDeliveryAddressChange = useCallback((address: UCPAddress) => {
-    setDeliveryAddress(address);
-    saveDeliveryAreaFromAddress(subjectId || principalId, address);
+  const persistDeliveryAddress = useCallback((address: UCPAddress) => {
+    const next = {
+      ...address,
+      city: collapseDuplicatedRegion(address.city || ''),
+      state: collapseDuplicatedRegion(address.state || ''),
+    };
+    saveDeliveryAreaFromAddress(subjectId || principalId, next);
     const sessionId = localStorage.getItem('ondc-session-id');
-    if (sessionId) updateLocalDeliveryAddress(sessionId, address);
+    if (sessionId) updateLocalDeliveryAddress(sessionId, next);
   }, [principalId, subjectId]);
+
+  const handleDeliveryAddressChange = useCallback((address: UCPAddress) => {
+    setDeliveryAddress({
+      ...address,
+      city: collapseDuplicatedRegion(address.city || ''),
+      state: collapseDuplicatedRegion(address.state || ''),
+    });
+  }, []);
 
   useEffect(() => {
     const onPrefill = (event: Event) => {
       const detail = (event as CustomEvent<CheckoutPrefillDetail>).detail;
       if (!detail) return;
-      setDeliveryAddress((prev) => {
-        const next: UCPAddress = {
-          line1: detail.line1 ?? prev.line1 ?? '',
-          city: detail.city ?? prev.city ?? '',
-          state: detail.state ?? prev.state ?? '',
-          postalCode: detail.postalCode ?? prev.postalCode ?? '',
-          country: detail.country ?? prev.country ?? 'IND',
-        };
-        saveDeliveryAreaFromAddress(subjectId || principalId, next);
-        return next;
-      });
+        setDeliveryAddress((prev) => {
+          const next: UCPAddress = {
+            line1: detail.line1 ?? prev.line1 ?? '',
+            city: detail.city ?? prev.city ?? '',
+            state: collapseDuplicatedRegion(detail.state ?? prev.state ?? ''),
+            postalCode: detail.postalCode ?? prev.postalCode ?? '',
+            country: detail.country ?? prev.country ?? 'IND',
+          };
+          saveDeliveryAreaFromAddress(subjectId || principalId, next);
+          return next;
+        });
       void refreshCart();
     };
     window.addEventListener(CHECKOUT_PREFILL_EVENT, onPrefill);
@@ -386,9 +479,10 @@ export function CheckoutPage() {
     if (!subjectId) return;
     void (async () => {
       try {
-        const ensured = await ensureBuyerAgent(walletAddress ?? subjectId);
-        setMandateStatus(ensured.mandate?.status ?? null);
-        const auto = ensured.mandate?.limits?.auto_approve_max_inr as
+        const status = await fetchBuyerAgentGuardStatus(walletAddress);
+        setAgent(status.agent);
+        setMandateStatus(status.mandate?.status ?? null);
+        const auto = status.mandate?.limits?.auto_approve_max_inr as
           | Record<string, number>
           | undefined;
         if (auto?.['buyer.checkout.commit'] != null) {
@@ -431,11 +525,18 @@ export function CheckoutPage() {
     }
   }
   useEffect(() => {
-    if (holdingAgDecision) return;
-    if (!loading && session && itemCount === 0) {
+    if (
+      shouldRedirectEmptyCheckout({
+        authenticated: isAuthenticated,
+        holdingDecision: holdingAgDecision,
+        loading,
+        itemCount,
+        hadItems: hadItemsRef.current,
+      })
+    ) {
       navigate('/cart');
     }
-  }, [holdingAgDecision, itemCount, loading, navigate, session]);
+  }, [holdingAgDecision, isAuthenticated, itemCount, loading, navigate, session]);
 
   async function completeAuthorizedCheckout(request: CheckoutExecutionRequest) {
     if (!session) throw new Error('No session found');
@@ -447,7 +548,7 @@ export function CheckoutPage() {
       throw new Error('AgentGuard allowed checkout but the shared exchange did not return an order.');
     }
     if (!executed.receipt) {
-      throw new Error('Checkout completed without a signed authorization reference.');
+      throw new Error('Checkout completed without an Intent Receipt.');
     }
 
     const verified = await verifyBuyerReceipt({ receiptId: executed.receipt.receipt_id });
@@ -455,8 +556,8 @@ export function CheckoutPage() {
       at: Date.now(),
       decision: 'allow',
       message: verified.valid
-        ? 'Order authorized and the signed authorization reference was verified.'
-        : 'Order authorized, but the signed authorization reference could not be verified.',
+        ? 'Order authorized and the Intent Receipt was verified.'
+        : 'Order authorized, but the Intent Receipt could not be verified.',
       receiptId: executed.receipt.receipt_id,
       amountInr: request.amountInr,
       orderId: order.id,
@@ -466,7 +567,7 @@ export function CheckoutPage() {
     setCheckoutOutcome(outcome);
     setPendingApproval(null);
     setAgentGuardNote(
-      `${outcome.message} Reference ${customerReference(executed.receipt.receipt_id)}.`,
+      `${outcome.message} ${intentReceiptLabel(executed.receipt.receipt_id)}.`,
     );
 
     await clearPurchasedCart({
@@ -488,7 +589,7 @@ export function CheckoutPage() {
         });
       } catch {
         setAgentGuardNote(
-          `${outcome.message} Reference ${customerReference(executed.receipt.receipt_id)}. Network status confirmation is pending.`,
+          `${outcome.message} ${intentReceiptLabel(executed.receipt.receipt_id)}. Network status confirmation is pending.`,
         );
       }
     }
@@ -621,6 +722,10 @@ export function CheckoutPage() {
     }
   }
 
+  if (!isAuthenticated) {
+    return <CheckoutSignInLock />;
+  }
+
   if (loading && !session) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
@@ -711,10 +816,7 @@ export function CheckoutPage() {
             <p data-testid="buyer-checkout-outcome-message">{checkoutOutcome.message}</p>
             {checkoutOutcome.receiptId ? (
               <p data-testid="buyer-checkout-receipt">
-                Authorization reference{' '}
-                <span className="quant font-medium">
-                  {customerReference(checkoutOutcome.receiptId)}
-                </span>
+                {intentReceiptLabel(checkoutOutcome.receiptId)}
               </p>
             ) : null}
             {checkoutOutcome.amountInr != null ? (
@@ -813,7 +915,11 @@ export function CheckoutPage() {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <div className="space-y-6">
               <BillingForm session={session} onSave={refreshCart} />
-              <DeliveryAddressForm address={deliveryAddress} onChange={handleDeliveryAddressChange} />
+              <DeliveryAddressForm
+                address={deliveryAddress}
+                onChange={handleDeliveryAddressChange}
+                onPersist={persistDeliveryAddress}
+              />
               <Card className="border-border/70 bg-card/90">
                 <CardHeader className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -886,7 +992,7 @@ export function CheckoutPage() {
                     <span className="quant text-foreground">{checkoutAutoMax}</span> can proceed
                     without step-up. Higher carts need exact one-time approval; replay is rejected.
                   </p>
-                  <p>AgentGuard records the authorization decision and signed receipt for this order.</p>
+                  <p>AgentGuard records the authorization decision and Intent Receipt for this order.</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
@@ -914,8 +1020,16 @@ export function CheckoutPage() {
                           ? 'Limit saved'
                           : 'Not saved'}
                     </Badge>
-                    <Badge variant="outline" className="rounded-full">
-                      Shopping agent paused; manual checkout remains available
+                    <Badge
+                      variant={agent?.status === 'active' ? 'default' : 'outline'}
+                      className="rounded-full"
+                      data-testid="buyer-agent-status"
+                    >
+                      {agent?.status === 'paused'
+                        ? 'Shopping agent paused; manual checkout remains available'
+                        : agent?.status === 'active'
+                          ? 'Shopping agent on; protected actions follow the mandate'
+                          : 'Shopping agent off'}
                     </Badge>
                   </div>
                 </CardContent>
@@ -935,7 +1049,7 @@ export function CheckoutPage() {
 
                   {!actionDisabled ? (
                     <p className="text-sm text-muted-foreground">
-                      You will receive an order number and receipt after successful checkout.
+                      You will receive an order number and Intent Receipt after successful checkout.
                     </p>
                   ) : null}
 

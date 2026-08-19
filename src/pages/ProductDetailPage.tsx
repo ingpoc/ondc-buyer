@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ShoppingCart, Star, Store } from 'lucide-react';
-import { useApi, useCart } from '../hooks';
+import { useApi, useAuth, useCart } from '../hooks';
+import { cartAddBlockedNotice, cartAddNotice } from '../lib/cartFailurePolicy';
 import { sellerDisplayName, unitPriceLabel } from '../lib/displayText';
 import type { UCPItem } from '../types';
 import { Badge } from '../components/ui/badge';
@@ -29,6 +30,7 @@ export function ProductDetailPage(): JSX.Element {
   const navigate = useNavigate();
   const { data, loading, error, execute } = useApi<UCPItem>(`/api/catalog/products/${id}`);
   const { addToCart } = useCart();
+  const { isAuthenticated } = useAuth();
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartMessage, setCartMessage] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -45,9 +47,14 @@ export function ProductDetailPage(): JSX.Element {
 
     try {
       await addToCart(data as any, quantity);
-      setCartMessage(`${quantity} ${quantity === 1 ? 'item' : 'items'} added to cart.`);
+      const title = data.name ?? data.descriptor?.name ?? 'Item';
+      setCartMessage(
+        isAuthenticated
+          ? `${quantity} ${quantity === 1 ? 'item' : 'items'} added to cart.`
+          : cartAddNotice({ title, authenticated: false }),
+      );
     } catch {
-      setCartMessage('Failed to add to cart.');
+      setCartMessage(isAuthenticated ? 'Failed to add to cart.' : cartAddBlockedNotice());
     } finally {
       setAddingToCart(false);
     }
@@ -204,7 +211,7 @@ export function ProductDetailPage(): JSX.Element {
               {cartMessage ? (
                 <div className="flex flex-wrap items-center gap-3" role="status" aria-live="polite">
                   <span className="text-sm font-medium text-foreground">{cartMessage}</span>
-                  {cartMessage.endsWith('added to cart.') ? (
+                  {cartMessage.includes('added to cart.') ? (
                     <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/cart')}>
                       View cart
                     </Button>

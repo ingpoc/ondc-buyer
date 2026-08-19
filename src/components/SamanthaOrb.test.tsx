@@ -48,4 +48,25 @@ describe('Buyer Samantha dialog', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Samantha' })).toBeNull());
     await waitFor(() => expect(screen.getByRole('button', { name: 'Open Samantha' })).toHaveFocus());
   });
+
+  it('does not resume AgentGuard authority just by opening chat', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => ({
+      ok: true,
+      json: async () => ({ data: { configured: false } }),
+      url: String(input),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <SamanthaOrb />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Samantha' }));
+    expect(await screen.findByRole('dialog', { name: 'Samantha' })).toBeVisible();
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => /\/(pause|resume|ensure)\b/.test(url))).toBe(false);
+  });
 });

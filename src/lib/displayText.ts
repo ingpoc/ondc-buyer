@@ -4,6 +4,12 @@ export function customerReference(value: string | null | undefined): string {
   return compact.slice(0, 8) || 'PENDING';
 }
 
+/** Buyer-facing Intent Receipt label; keep the technical id as the short reference. */
+export function intentReceiptLabel(receiptId?: string | null): string {
+  const reference = customerReference(receiptId);
+  return receiptId ? `Intent Receipt ${reference}` : 'Intent Receipt';
+}
+
 export function sellerDisplayName(
   providerName: string | null | undefined,
   providerId: string | null | undefined,

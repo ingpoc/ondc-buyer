@@ -2,6 +2,17 @@ import type { BecknItem, UCPAddress, UCPQuote, UCPSession } from '../types';
 
 const LOCAL_CART_STORAGE_KEY = 'ondc-local-cart-session';
 export const LOCAL_CART_CHANGED_EVENT = 'ondc-local-cart-changed';
+const LOCAL_CART_ACTIVE_KEY = 'ondc-local-cart-active';
+
+/** True when this browser session is using the local cart because remote cart no-op'd or rejected. */
+export function isLocalCartOverrideActive(): boolean {
+  return localStorage.getItem(LOCAL_CART_ACTIVE_KEY) === '1';
+}
+
+export function setLocalCartOverrideActive(active: boolean): void {
+  if (active) localStorage.setItem(LOCAL_CART_ACTIVE_KEY, '1');
+  else localStorage.removeItem(LOCAL_CART_ACTIVE_KEY);
+}
 
 interface StoredSessionMap {
   [sessionId: string]: UCPSession;

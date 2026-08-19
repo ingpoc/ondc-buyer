@@ -6,8 +6,10 @@ import {
   checkoutActionDisabled,
   checkoutFormReady,
   checkoutDecisionStep,
+  collapseDuplicatedRegion,
   DeliveryAddressForm,
   ExactApprovalReview,
+  shouldRedirectEmptyCheckout,
 } from './CheckoutPage';
 
 function AddressHarness() {
@@ -39,6 +41,13 @@ describe('DeliveryAddressForm semantics', () => {
     expect(city).toHaveValue('Pune');
     expect(state).toHaveValue('Maharashtra');
     expect(postalCode).toHaveValue('411001');
+  });
+
+  it('collapses a duplicated state value instead of showing KarnatakaKarnataka', () => {
+    render(<AddressHarness />);
+    const state = screen.getByRole('textbox', { name: 'State *' });
+    fireEvent.change(state, { target: { value: 'KarnatakaKarnataka' } });
+    expect(state).toHaveValue('Karnataka');
   });
 });
 
@@ -123,5 +132,38 @@ describe('Exact checkout approval', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm exact approval and place order' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onKeepReviewing).not.toHaveBeenCalled();
+  });
+});
+
+describe('checkout empty-cart redirect', () => {
+  it('does not navigate away for guests or after items were already present', () => {
+    expect(collapseDuplicatedRegion('KarnatakaKarnataka')).toBe('Karnataka');
+    expect(
+      shouldRedirectEmptyCheckout({
+        authenticated: false,
+        holdingDecision: false,
+        loading: false,
+        itemCount: 0,
+        hadItems: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRedirectEmptyCheckout({
+        authenticated: true,
+        holdingDecision: false,
+        loading: false,
+        itemCount: 0,
+        hadItems: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRedirectEmptyCheckout({
+        authenticated: true,
+        holdingDecision: false,
+        loading: false,
+        itemCount: 0,
+        hadItems: false,
+      }),
+    ).toBe(true);
   });
 });

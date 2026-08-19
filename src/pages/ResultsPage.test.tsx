@@ -10,6 +10,7 @@ import {
 
 vi.mock('../hooks', () => ({
   useCart: () => ({ addToCart: vi.fn() }),
+  useAuth: () => ({ isAuthenticated: true }),
   useSubject: () => ({ subjectId: 'principal:buyer:test', principalId: 'principal:buyer:test' }),
   useSearch: () => ({
     data: { items: [], totalCount: 0 },
