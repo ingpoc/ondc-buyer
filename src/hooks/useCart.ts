@@ -5,11 +5,18 @@ import {
   addLocalItem,
   clearLocalSession,
   getLocalSession,
+  isLocalCartOverrideActive,
   LOCAL_CART_CHANGED_EVENT,
   removeLocalItem,
+  setLocalCartOverrideActive,
   updateLocalQuantity,
 } from '../lib/localCart';
-import { formatCartApiError, shouldFallbackLocalOnCartError, shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
+import {
+  formatCartApiError,
+  remoteCartContainsItem,
+  shouldFallbackLocalOnCartError,
+  shouldUseLocalCartFallback,
+} from '../lib/cartFailurePolicy';
 
 const USE_LOCAL_CART = shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE);
 
@@ -53,13 +60,20 @@ async function cartRequest(
   url: string,
   options: RequestInit = {}
 ): Promise<{ session: UCPSession }> {
-  const response = await fetch(url, options);
+  const response = await fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
 
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
 
   return response.json();
+}
+
+function localCartStoreActive(): boolean {
+  return USE_LOCAL_CART || isLocalCartOverrideActive();
 }
 
 export function useCart(): UseCartResult {
@@ -73,17 +87,23 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (USE_LOCAL_CART) {
+      if (localCartStoreActive()) {
         setSession(getLocalSession(sessionId));
         return;
       }
       const data = await cartRequest(buildCommerceUrl(`/api/cart?sessionId=${sessionId}`));
+      if ((data.session.items?.length ?? 0) === 0 && getLocalSession(sessionId).items.length > 0) {
+        setLocalCartOverrideActive(true);
+        setSession(getLocalSession(sessionId));
+        return;
+      }
       setSession(data.session);
     } catch (err) {
       if (
         shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
         shouldFallbackLocalOnCartError(err)
       ) {
+        setLocalCartOverrideActive(true);
         setSession(getLocalSession(sessionId));
         setError(null);
       } else {
@@ -101,9 +121,26 @@ export function useCart(): UseCartResult {
   useEffect(() => {
     const syncLocalCart = (event: Event) => {
       const changedSessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
-      if (changedSessionId === sessionId) {
-        setSession(getLocalSession(sessionId));
+      if (changedSessionId !== sessionId) return;
+      const local = getLocalSession(sessionId);
+      if (localCartStoreActive()) {
+        setSession(local);
+        return;
       }
+      setSession((current) => {
+        if (!current?.items.length) return local.items.length ? local : current;
+        return {
+          ...current,
+          buyer: {
+            ...current.buyer,
+            ...local.buyer,
+            name: local.buyer?.name || current.buyer?.name || '',
+            email: local.buyer?.email || current.buyer?.email || '',
+            phone: local.buyer?.phone || current.buyer?.phone || '',
+          },
+          updatedAt: local.updatedAt,
+        };
+      });
     };
     window.addEventListener(LOCAL_CART_CHANGED_EVENT, syncLocalCart);
     return () => window.removeEventListener(LOCAL_CART_CHANGED_EVENT, syncLocalCart);
@@ -114,7 +151,8 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (USE_LOCAL_CART) {
+      if (localCartStoreActive()) {
+        setLocalCartOverrideActive(true);
         setSession(addLocalItem(sessionId, item, quantity));
         return;
       }
@@ -123,16 +161,24 @@ export function useCart(): UseCartResult {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, item, quantity }),
       });
+      if (!remoteCartContainsItem(data.session, item.id)) {
+        setLocalCartOverrideActive(true);
+        setSession(addLocalItem(sessionId, item, quantity));
+        return;
+      }
       setSession(data.session);
     } catch (err) {
       if (
         shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
         shouldFallbackLocalOnCartError(err)
       ) {
+        setLocalCartOverrideActive(true);
         setSession(addLocalItem(sessionId, item, quantity));
         setError(null);
       } else {
-        setError(formatCartApiError(err, 'Add item to cart'));
+        const message = formatCartApiError(err, 'Add item to cart');
+        setError(message);
+        throw new Error(message);
       }
     } finally {
       setLoading(false);
@@ -144,7 +190,7 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (USE_LOCAL_CART) {
+      if (localCartStoreActive()) {
         setSession(removeLocalItem(sessionId, itemId));
         return;
       }
@@ -173,7 +219,7 @@ export function useCart(): UseCartResult {
     setError(null);
 
     try {
-      if (USE_LOCAL_CART) {
+      if (localCartStoreActive()) {
         setSession(updateLocalQuantity(sessionId, itemId, quantity));
         return;
       }
@@ -202,7 +248,8 @@ export function useCart(): UseCartResult {
     setLoading(true);
     setError(null);
     try {
-      if (USE_LOCAL_CART) {
+      if (localCartStoreActive()) {
+        setLocalCartOverrideActive(false);
         setSession(clearLocalSession(sessionId));
         return;
       }
@@ -215,12 +262,14 @@ export function useCart(): UseCartResult {
         )
       );
       const refreshed = await cartRequest(buildCommerceUrl(`/api/cart?sessionId=${sessionId}`));
+      setLocalCartOverrideActive(false);
       setSession(refreshed.session);
     } catch (err) {
       if (
         shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
         shouldFallbackLocalOnCartError(err)
       ) {
+        setLocalCartOverrideActive(false);
         setSession(clearLocalSession(sessionId));
         setError(null);
       } else {

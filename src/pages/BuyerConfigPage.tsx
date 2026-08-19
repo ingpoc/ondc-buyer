@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -49,7 +49,7 @@ const PREF_TABS = [
 
 type PrefTabId = (typeof PREF_TABS)[number]['id'];
 
-function coercePrefTab(raw: string | null): PrefTabId {
+export function coercePrefTab(raw: string | null): PrefTabId {
   const value = (raw || '').trim().toLowerCase().replace(/_/g, '-');
   if (value === 'profile' || value === 'details' || value === 'account') return 'profile';
   if (value === 'agent-guard' || value === 'agentguard' || value === 'mandate') return 'agent-guard';
@@ -314,6 +314,8 @@ export function BuyerConfigPage() {
     }
   }
 
+  const userChoseTab = useRef(false);
+
   function setTab(next: string) {
     const tab = coercePrefTab(next);
     setSearchParams(
@@ -324,6 +326,13 @@ export function BuyerConfigPage() {
       },
       { replace: true }
     );
+  }
+
+  function handleTabChange(next: string) {
+    if (!userChoseTab.current) return;
+    const tab = coercePrefTab(next);
+    if (tab === activeTab) return;
+    setTab(tab);
   }
 
   const principalLabel =
@@ -355,13 +364,19 @@ export function BuyerConfigPage() {
       <Tabs
         orientation="vertical"
         value={activeTab}
-        onValueChange={setTab}
+        onValueChange={handleTabChange}
         className="w-full flex-col gap-4 sm:flex-row sm:items-start sm:gap-6"
         data-testid="buyer-config-tabs"
       >
         <TabsList
           className="h-auto w-full shrink-0 flex-row flex-wrap justify-start gap-1 rounded-2xl bg-transparent p-0 sm:w-48 sm:flex-col sm:flex-nowrap sm:items-stretch sm:border-r sm:border-border sm:pr-3"
           aria-label="Preference sections"
+          onPointerDown={() => {
+            userChoseTab.current = true;
+          }}
+          onKeyDown={() => {
+            userChoseTab.current = true;
+          }}
         >
           {PREF_TABS.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -370,6 +385,9 @@ export function BuyerConfigPage() {
                 key={tab.id}
                 value={tab.id}
                 data-active={isActive ? 'true' : undefined}
+                onPointerDown={() => {
+                  userChoseTab.current = true;
+                }}
                 className={cn(
                   'justify-start rounded-lg px-3 py-2 text-left text-muted-foreground after:hidden hover:bg-primary/5 hover:text-primary',
                   isActive &&
@@ -592,7 +610,11 @@ export function BuyerConfigPage() {
                     <Link to="/checkout">Checkout</Link>
                   </Button>
                 </div>
-                {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+                {note ? (
+                  <p className="text-xs text-muted-foreground" data-testid="buyer-config-agent-note">
+                    {note}
+                  </p>
+                ) : null}
                 <p className="text-[11px] text-muted-foreground">
                   Limits and activity are saved for this signed-in account on this demo host. They may
                   reset if the demo environment restarts.
@@ -660,7 +682,7 @@ export function BuyerConfigPage() {
           >
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Protected activity</CardTitle>
+                <CardTitle className="text-base">Intent Receipts</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 {note && activeTab === 'activity' ? (
@@ -695,8 +717,9 @@ export function BuyerConfigPage() {
                               variant="outline"
                               disabled={busy}
                               onClick={() => void verifyReceipt(receipt.receipt_id)}
+                              data-testid={`buyer-verify-receipt-${receipt.receipt_id}`}
                             >
-                              Verify receipt
+                              Verify Intent Receipt
                             </Button>
                           </div>
                         </div>

@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FilterSidebar, type SearchFilters } from '../components/FilterSidebar';
 import { ResultGrid } from '../components/ResultGrid';
 import { SearchBar } from '../components/SearchBar';
-import { useCart, useSearch, useSubject } from '../hooks';
+import { useCart, useSearch, useSubject, useAuth } from '../hooks';
+import { cartAddBlockedNotice, cartAddNotice } from '../lib/cartFailurePolicy';
 import {
   deliveryAreaLabel,
   loadSavedDeliveryArea,
@@ -152,6 +153,7 @@ export function ResultsPage(): JSX.Element {
   const query = rawQuery === 'undefined' ? '' : rawQuery;
   const ondcTxn = searchParams.get('ondc_txn') ?? '';
   const { addToCart, session } = useCart();
+  const { isAuthenticated } = useAuth();
   const { subjectId, principalId } = useSubject();
   const preferenceOwner = subjectId || principalId;
   const paramsKey = searchParams.toString();
@@ -257,10 +259,12 @@ export function ResultsPage(): JSX.Element {
     try {
       await addToCart(item as any);
       const title = item.name ?? item.descriptor?.name ?? 'Item';
-      setCartNotice(`${title} added to cart.`);
+      setCartNotice(cartAddNotice({ title, authenticated: isAuthenticated }));
     } catch (err) {
       console.error('Failed to add to cart:', err);
-      setCartNotice('Unable to add this item. Please try again.');
+      setCartNotice(
+        isAuthenticated ? 'Unable to add this item. Please try again.' : cartAddBlockedNotice(),
+      );
     }
   }
 
@@ -357,7 +361,7 @@ export function ResultsPage(): JSX.Element {
             <Card className="border-primary/30 bg-primary/5 shadow-none" role="status" aria-live="polite">
               <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-medium">{cartNotice}</p>
-                {cartNotice.endsWith('added to cart.') ? (
+                {cartNotice.endsWith('added to cart.') || cartNotice.includes('added to cart.') ? (
                   <Button type="button" variant="outline" className="rounded-full" onClick={() => navigate('/cart')}>
                     View cart
                   </Button>

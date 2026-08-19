@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatCartApiError,
+  cartAddNotice,
   shouldFallbackLocalOnCartError,
   shouldUseLocalCartFallback,
 } from './cartFailurePolicy';
@@ -22,8 +23,17 @@ describe('cart failure policy', () => {
 
   it('falls back to local cart on missing remote cart host errors', () => {
     expect(shouldFallbackLocalOnCartError(new Error('Request failed: 404'))).toBe(true);
+    expect(shouldFallbackLocalOnCartError(new Error('Request failed: 401'))).toBe(true);
+    expect(shouldFallbackLocalOnCartError(new Error('Request failed: 403'))).toBe(true);
     expect(shouldFallbackLocalOnCartError(new Error('Failed to fetch'))).toBe(true);
     expect(shouldFallbackLocalOnCartError(new Error('Request failed: 503'))).toBe(false);
+  });
+
+  it('tells guests that checkout needs sign-in after a successful add', () => {
+    expect(cartAddNotice({ title: 'Atta 1kg', authenticated: true })).toBe('Atta 1kg added to cart.');
+    expect(cartAddNotice({ title: 'Atta 1kg', authenticated: false })).toBe(
+      'Atta 1kg added to cart. Sign in to check out.',
+    );
   });
 
   it('formats live commerce API errors for user-facing cart flows', () => {

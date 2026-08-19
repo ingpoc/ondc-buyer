@@ -26,6 +26,7 @@ vi.mock('../hooks', () => ({
     execute,
   }),
   useCart: () => ({ addToCart }),
+  useAuth: () => ({ isAuthenticated: true }),
 }));
 
 describe('ProductDetailPage decision context', () => {

@@ -14,7 +14,7 @@ import {
   type BuyerCommerceReturn,
 } from '../lib/commerceClient';
 import { executeBuyerProtectedAction, verifyBuyerReceipt } from '../lib/agentGuardCheckout';
-import { customerReference, sellerDisplayName } from '../lib/displayText';
+import { customerReference, intentReceiptLabel, sellerDisplayName } from '../lib/displayText';
 import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
 import { Badge } from '../components/ui/badge';
@@ -582,10 +582,10 @@ export function OrderDetailPage(): JSX.Element {
                 <span className="font-medium">
                   {order.authorization?.receiptReference
                     ? receiptVerified == null
-                      ? 'Checking signed reference'
+                      ? 'Checking Intent Receipt'
                       : receiptVerified
-                        ? 'Authorized · signed reference verified'
-                        : 'Authorized · verification failed'
+                        ? 'Authorized · Intent Receipt verified'
+                        : 'Authorized · Intent Receipt verification failed'
                     : 'Authorization evidence unavailable'}
                 </span>
               </div>
@@ -609,9 +609,9 @@ export function OrderDetailPage(): JSX.Element {
                   </div>
                   {order.authorization.receiptReference ? (
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-muted-foreground">Authorization reference</span>
-                      <span className="quant">
-                        {customerReference(order.authorization.receiptReference)}
+                      <span className="text-muted-foreground">Intent Receipt</span>
+                      <span className="quant" title={order.authorization.receiptReference}>
+                        {intentReceiptLabel(order.authorization.receiptReference)}
                       </span>
                     </div>
                   ) : null}
@@ -626,7 +626,7 @@ export function OrderDetailPage(): JSX.Element {
                 </>
               ) : (
                 <p className="text-muted-foreground">
-                  This order does not include a signed authorization reference. Contact support
+                  This order does not include an Intent Receipt. Contact support
                   before relying on it as proof of authorization.
                 </p>
               )}

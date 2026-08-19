@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { customerReference, sellerDisplayName, unitPriceLabel } from './displayText';
+import { customerReference, intentReceiptLabel, sellerDisplayName, unitPriceLabel } from './displayText';
 
 describe('customer-facing identifiers', () => {
   it('turns internal ids into short references without implementation prefixes', () => {
     expect(customerReference('order_40a99f8ff4ea4d1e')).toBe('40A99F8F');
     expect(customerReference('txn_0a15abd4aa3a460b')).toBe('0A15ABD4');
+    expect(intentReceiptLabel('receipt_40a99f8ff4ea4d1e')).toBe('Intent Receipt 40A99F8F');
+    expect(intentReceiptLabel(null)).toBe('Intent Receipt');
   });
 
   it('never exposes principal ids or internal provider slugs as seller names', () => {

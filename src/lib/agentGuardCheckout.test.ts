@@ -70,6 +70,27 @@ describe('Buyer AgentGuard controls', () => {
       expect.stringContaining('/api/agentguard/agents/current?role=buyer'),
       { credentials: 'include' }
     );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/agents/ensure'),
+      expect.anything(),
+    );
+  });
+
+  it('does not ensure or resume a paused agent when reading status for a legacy wallet', async () => {
+    const fetchMock = vi.fn(async () =>
+      apiResponse({
+        agent: { agent_id: 'agent-buyer-1', status: 'paused' },
+        mandate: { mandate_id: 'mandate-1', status: 'active' },
+        receipts: [],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const status = await fetchBuyerAgentGuardStatus('0xabc');
+    expect(status.agent?.status).toBe('paused');
+    const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
+    expect(urls.some((url) => url.includes('/ensure') || url.includes('/resume'))).toBe(false);
+    expect(urls.some((url) => url.includes('/wallets/0xabc'))).toBe(true);
   });
 
   it.each([
@@ -105,6 +126,8 @@ describe('Buyer AgentGuard controls', () => {
       expect.stringContaining('/api/agentguard/receipts/verify'),
       expect.objectContaining({ body: JSON.stringify({ receipt_id: 'receipt-1' }) })
     );
+    const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
+    expect(urls.some((url) => url.includes('/pause') || url.includes('/resume') || url.includes('/ensure'))).toBe(false);
   });
 
   it('executes non-checkout mutations only through AgentGuard', async () => {
