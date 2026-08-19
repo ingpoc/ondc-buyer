@@ -6,8 +6,10 @@ import {
   executeBuyerProtectedAction,
   fetchBuyerAgentGuardStatus,
   setBuyerAgentPaused,
+  syncBuyerAgentGuardStatus,
   verifyBuyerReceipt,
 } from './agentGuardCheckout';
+import { getBuyerAgentAuthority, resetBuyerAgentAuthority } from './buyerAgentAuthority';
 
 function apiResponse(data: unknown) {
   return new Response(JSON.stringify({ success: true, data }), {
@@ -19,6 +21,7 @@ function apiResponse(data: unknown) {
 describe('Buyer AgentGuard controls', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+    resetBuyerAgentAuthority();
   });
 
   it('clears the purchased cart only after both order and authorization references exist', async () => {
@@ -128,6 +131,29 @@ describe('Buyer AgentGuard controls', () => {
     );
     const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
     expect(urls.some((url) => url.includes('/pause') || url.includes('/resume') || url.includes('/ensure'))).toBe(false);
+  });
+
+  it('does not unpause when a status poll after pause reports active', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        if (url.includes('/pause') && method === 'POST') {
+          return apiResponse({ agent: { agent_id: 'agent-buyer-1', status: 'paused', role: 'buyer' } });
+        }
+        return apiResponse({
+          agent: { agent_id: 'agent-buyer-1', status: 'active', role: 'buyer' },
+          mandate: { mandate_id: 'mandate-1', status: 'active' },
+          receipts: [],
+        });
+      }),
+    );
+
+    await setBuyerAgentPaused({ agentId: 'agent-buyer-1', paused: true });
+    const { snapshot } = await syncBuyerAgentGuardStatus();
+    expect(snapshot.agent?.status).toBe('paused');
+    expect(getBuyerAgentAuthority().explicitPaused).toBe(true);
   });
 
   it('executes non-checkout mutations only through AgentGuard', async () => {

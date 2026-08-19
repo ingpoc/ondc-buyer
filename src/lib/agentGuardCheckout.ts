@@ -5,6 +5,12 @@ import {
   type IntentReceipt,
   type Mandate,
 } from '@aadharchain/agentguard-contract';
+import {
+  applyBuyerAgentControl,
+  applyBuyerAgentPoll,
+  currentBuyerAgentPollEpoch,
+  invalidateBuyerAgentPolls,
+} from './buyerAgentAuthority';
 import { TRUST_API_URL } from './identityUrls';
 
 export interface BuyerCheckoutDecision {
@@ -255,22 +261,6 @@ export async function confirmBuyerMandate(params: {
   return parseData<{ mandate: Mandate }>(response);
 }
 
-export async function ensureBuyerAgent(walletAddress?: string | null) {
-  const response = await fetch(`${TRUST_API_URL}/api/agentguard/agents/ensure`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...walletField(walletAddress),
-      role: 'buyer',
-    }),
-  });
-  return parseData<{
-    agent: AgentRef;
-    mandate?: Mandate | null;
-  }>(response);
-}
-
 /** Read-only AgentGuard status. Must not ensure/resume — pause is exclusive to the Resume control. */
 export async function fetchBuyerAgentGuardStatus(walletAddress?: string | null) {
   const isLegacyWallet = Boolean(walletAddress && !walletAddress.startsWith('principal:'));
@@ -286,12 +276,20 @@ export async function fetchBuyerAgentGuardStatus(walletAddress?: string | null) 
   return {
     ...data,
     receipts: data.agent
-      ? data.receipts.filter((receipt) => receipt.agent_id === data.agent?.agent_id)
+      ? (data.receipts ?? []).filter((receipt) => receipt.agent_id === data.agent?.agent_id)
       : [],
   };
 }
 
+/** Fetch status and apply it through the sticky pause store. */
+export async function syncBuyerAgentGuardStatus(walletAddress?: string | null) {
+  const epoch = currentBuyerAgentPollEpoch();
+  const status = await fetchBuyerAgentGuardStatus(walletAddress);
+  return { status, snapshot: applyBuyerAgentPoll(status, epoch) };
+}
+
 export async function setBuyerAgentPaused(params: { agentId: string; paused: boolean }) {
+  invalidateBuyerAgentPolls();
   const operation = params.paused ? 'pause' : 'resume';
   const response = await fetch(
     `${TRUST_API_URL}/api/agentguard/agents/${params.agentId}/${operation}`,
@@ -302,5 +300,7 @@ export async function setBuyerAgentPaused(params: { agentId: string; paused: boo
       body: JSON.stringify({}),
     }
   );
-  return parseData<{ agent: AgentRef }>(response);
+  const result = await parseData<{ agent: AgentRef }>(response);
+  applyBuyerAgentControl(result.agent, params.paused);
+  return result;
 }

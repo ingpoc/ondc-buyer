@@ -7,7 +7,7 @@ import { TrustNotice } from '../components/TrustStatus';
 import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import { Button } from '../components/ui/button';
 import { useAuthContext } from '../contexts/AuthContext';
-import { fetchBuyerAgentGuardStatus } from '../lib/agentGuardCheckout';
+import { syncBuyerAgentGuardStatus } from '../lib/agentGuardCheckout';
 
 export function SearchPage(): JSX.Element {
   const navigate = useNavigate();
@@ -19,13 +19,9 @@ export function SearchPage(): JSX.Element {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    void fetchBuyerAgentGuardStatus(walletAddress ?? principalId)
-      .then((status) => {
-        const limits = status.mandate?.limits?.auto_approve_max_inr as
-          | Record<string, number>
-          | undefined;
-        const limit = limits?.['buyer.checkout.commit'];
-        setCheckoutLimit(Number.isFinite(Number(limit)) ? Number(limit) : null);
+    void syncBuyerAgentGuardStatus(walletAddress ?? principalId)
+      .then(({ snapshot }) => {
+        setCheckoutLimit(snapshot.checkoutAutoMax);
       })
       .catch(() => setCheckoutLimit(null));
   }, [isAuthenticated, principalId, walletAddress]);
