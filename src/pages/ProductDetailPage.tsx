@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ShoppingCart, Star, Store } from 'lucide-react';
 import { useApi, useAuth, useCart } from '../hooks';
-import { cartAddBlockedNotice, cartAddNotice } from '../lib/cartFailurePolicy';
+import {
+  cartAddBlockedNotice,
+  cartAddNotice,
+  remoteCartContainsItem,
+} from '../lib/cartFailurePolicy';
 import { sellerDisplayName, unitPriceLabel } from '../lib/displayText';
 import type { UCPItem } from '../types';
 import { Badge } from '../components/ui/badge';
@@ -46,8 +50,12 @@ export function ProductDetailPage(): JSX.Element {
     setCartMessage('');
 
     try {
-      await addToCart(data as any, quantity);
+      const next = await addToCart(data as any, quantity);
       const title = data.name ?? data.descriptor?.name ?? 'Item';
+      if (!remoteCartContainsItem(next, data.id)) {
+        setCartMessage(isAuthenticated ? 'Failed to add to cart.' : cartAddBlockedNotice());
+        return;
+      }
       setCartMessage(
         isAuthenticated
           ? `${quantity} ${quantity === 1 ? 'item' : 'items'} added to cart.`

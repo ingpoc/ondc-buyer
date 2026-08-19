@@ -26,7 +26,7 @@ export interface UseCartResult {
   session: UCPSession | null;
   loading: boolean;
   error: string | null;
-  addToCart: (item: BecknItem, quantity?: number) => Promise<void>;
+  addToCart: (item: BecknItem, quantity?: number) => Promise<UCPSession>;
   removeFromCart: (itemId: string) => Promise<void>;
   updateQuantity: (itemId: string, quantity: number) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -153,8 +153,9 @@ export function useCart(): UseCartResult {
     try {
       if (localCartStoreActive()) {
         setLocalCartOverrideActive(true);
-        setSession(addLocalItem(sessionId, item, quantity));
-        return;
+        const next = addLocalItem(sessionId, item, quantity);
+        setSession(next);
+        return next;
       }
       const data = await cartRequest(buildCommerceUrl('/api/cart'), {
         method: 'POST',
@@ -163,23 +164,26 @@ export function useCart(): UseCartResult {
       });
       if (!remoteCartContainsItem(data.session, item.id)) {
         setLocalCartOverrideActive(true);
-        setSession(addLocalItem(sessionId, item, quantity));
-        return;
+        const next = addLocalItem(sessionId, item, quantity);
+        setSession(next);
+        return next;
       }
       setSession(data.session);
+      return data.session;
     } catch (err) {
       if (
         shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE) ||
         shouldFallbackLocalOnCartError(err)
       ) {
         setLocalCartOverrideActive(true);
-        setSession(addLocalItem(sessionId, item, quantity));
+        const next = addLocalItem(sessionId, item, quantity);
+        setSession(next);
         setError(null);
-      } else {
-        const message = formatCartApiError(err, 'Add item to cart');
-        setError(message);
-        throw new Error(message);
+        return next;
       }
+      const message = formatCartApiError(err, 'Add item to cart');
+      setError(message);
+      throw new Error(message);
     } finally {
       setLoading(false);
     }

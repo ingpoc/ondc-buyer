@@ -4,7 +4,11 @@ import { FilterSidebar, type SearchFilters } from '../components/FilterSidebar';
 import { ResultGrid } from '../components/ResultGrid';
 import { SearchBar } from '../components/SearchBar';
 import { useCart, useSearch, useSubject, useAuth } from '../hooks';
-import { cartAddBlockedNotice, cartAddNotice } from '../lib/cartFailurePolicy';
+import {
+  cartAddBlockedNotice,
+  cartAddOutcomeNotice,
+  remoteCartContainsItem,
+} from '../lib/cartFailurePolicy';
 import {
   deliveryAreaLabel,
   loadSavedDeliveryArea,
@@ -257,9 +261,15 @@ export function ResultsPage(): JSX.Element {
 
   async function handleAddToCart(item: UCPItem): Promise<void> {
     try {
-      await addToCart(item as any);
+      const next = await addToCart(item as any);
       const title = item.name ?? item.descriptor?.name ?? 'Item';
-      setCartNotice(cartAddNotice({ title, authenticated: isAuthenticated }));
+      setCartNotice(
+        cartAddOutcomeNotice({
+          title,
+          authenticated: isAuthenticated,
+          persisted: remoteCartContainsItem(next, item.id),
+        }),
+      );
     } catch (err) {
       console.error('Failed to add to cart:', err);
       setCartNotice(

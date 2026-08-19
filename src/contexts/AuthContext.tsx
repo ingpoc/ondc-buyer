@@ -67,7 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (!matchesAudience(nextUser)) {
-          // One cookie carries one app audience; Seller session must not look signed-in here.
+          // Other-app cookie is not a Buyer session. Treat as signed-out for cart.
+          // Guest cart wipe policy is in syncBuyerPrincipalSession, not here.
           syncBuyerPrincipalSession(null);
           setUser(null);
           setError('Signed in for a different app. Sign in again for Buyer.');

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getLocalSession } from '../lib/localCart';
+import { syncBuyerPrincipalSession } from '../lib/principalStorage';
 import { useCart } from './useCart';
 
 vi.mock('../lib/commerceConfig', () => ({
@@ -71,5 +72,34 @@ describe('useCart guest add', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.itemCount).toBe(1);
     expect(result.current.session?.items[0]?.item.name).toBe('Whole Wheat Atta 1kg');
+  });
+
+  it('still has the item on a fresh /cart hook after guest or other-app principal sync', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('unauthorized', { status: 401 })),
+    );
+
+    const { result, unmount } = renderHook(() => useCart());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.addToCart(atta as never, 1);
+    });
+    expect(result.current.itemCount).toBe(1);
+    const sessionId = localStorage.getItem('ondc-session-id');
+    expect(sessionId).toBeTruthy();
+
+    act(() => {
+      syncBuyerPrincipalSession(null);
+    });
+
+    expect(localStorage.getItem('ondc-session-id')).toBe(sessionId);
+    unmount();
+
+    const { result: cartPage } = renderHook(() => useCart());
+    await waitFor(() => expect(cartPage.current.loading).toBe(false));
+    expect(cartPage.current.itemCount).toBe(1);
+    expect(cartPage.current.session?.items[0]?.item.id).toBe('atta-1');
   });
 });
