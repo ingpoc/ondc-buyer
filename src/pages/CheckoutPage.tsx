@@ -13,13 +13,18 @@ import {
   compileBuyerMandate,
   clearPurchasedCart,
   confirmBuyerMandate,
-  fetchBuyerAgentGuardStatus,
+  syncBuyerAgentGuardStatus,
   evaluateBuyerCheckout,
   executeBuyerCheckout,
   verifyBuyerReceipt,
   type BuyerCheckoutDecision,
 } from '../lib/agentGuardCheckout';
 import type { AgentRef } from '@aadharchain/agentguard-contract';
+import {
+  buyerShoppingAgentLabel,
+  getBuyerAgentAuthority,
+  subscribeBuyerAgentAuthority,
+} from '../lib/buyerAgentAuthority';
 import { useAuthContext } from '../contexts/AuthContext';
 import { useAuthProviders } from '../lib/authProviders';
 import {
@@ -476,19 +481,29 @@ export function CheckoutPage() {
   }, [navigate]);
 
   useEffect(() => {
+    const apply = () => {
+      const snapshot = getBuyerAgentAuthority();
+      if (snapshot.agent) setAgent(snapshot.agent);
+      if (snapshot.mandateStatus) setMandateStatus(snapshot.mandateStatus);
+      if (snapshot.checkoutAutoMax != null) {
+        setCheckoutAutoMax(snapshot.checkoutAutoMax);
+        setSavedCheckoutAutoMax(snapshot.checkoutAutoMax);
+      }
+    };
+    apply();
+    return subscribeBuyerAgentAuthority(apply);
+  }, []);
+
+  useEffect(() => {
     if (!subjectId) return;
     void (async () => {
       try {
-        const status = await fetchBuyerAgentGuardStatus(walletAddress);
-        setAgent(status.agent);
-        setMandateStatus(status.mandate?.status ?? null);
-        const auto = status.mandate?.limits?.auto_approve_max_inr as
-          | Record<string, number>
-          | undefined;
-        if (auto?.['buyer.checkout.commit'] != null) {
-          const saved = Number(auto['buyer.checkout.commit']);
-          setCheckoutAutoMax(saved);
-          setSavedCheckoutAutoMax(saved);
+        const { snapshot } = await syncBuyerAgentGuardStatus(walletAddress);
+        setAgent(snapshot.agent);
+        setMandateStatus(snapshot.mandateStatus);
+        if (snapshot.checkoutAutoMax != null) {
+          setCheckoutAutoMax(snapshot.checkoutAutoMax);
+          setSavedCheckoutAutoMax(snapshot.checkoutAutoMax);
         }
       } catch {
         /* optional until signed in */
@@ -1025,11 +1040,7 @@ export function CheckoutPage() {
                       className="rounded-full"
                       data-testid="buyer-agent-status"
                     >
-                      {agent?.status === 'paused'
-                        ? 'Shopping agent paused; manual checkout remains available'
-                        : agent?.status === 'active'
-                          ? 'Shopping agent on; protected actions follow the mandate'
-                          : 'Shopping agent off'}
+                      {buyerShoppingAgentLabel(agent?.status, 'checkout')}
                     </Badge>
                   </div>
                 </CardContent>

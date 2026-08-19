@@ -24,6 +24,8 @@ import { createSamanthaSessionId, persistSamanthaEvent } from '../lib/samanthaTr
 import { useCart, useSubject } from '../hooks';
 import { getMockBuyerItems } from '../lib/mockSearch';
 import { cn } from '../lib/utils';
+import { syncBuyerAgentGuardStatus } from '../lib/agentGuardCheckout';
+import { getBuyerAgentAuthority } from '../lib/buyerAgentAuthority';
 
 const BUYER_ORB_INSTRUCTIONS =
   'You are Samantha, the ONDC Buyer shopping companion. Speak briefly and warmly. Keep every user-facing reply to at most two short sentences unless the user asks for detail. ' +
@@ -98,6 +100,20 @@ function markSamanthaTurn(inFlight: boolean, phase: string): void {
     phase,
     at: Date.now(),
   };
+}
+
+function shoppingAgentIsPaused(): boolean {
+  const snapshot = getBuyerAgentAuthority();
+  return snapshot.explicitPaused || snapshot.agent?.status === 'paused';
+}
+
+function readyHint(usedMic: boolean): string {
+  if (shoppingAgentIsPaused()) {
+    return usedMic
+      ? 'Voice ready · shopping agent paused'
+      : 'Text ready · shopping agent paused';
+  }
+  return usedMic ? 'Voice and text ready · microphone on' : 'Text ready · microphone off';
 }
 
 type OrbState = 'idle' | 'connecting' | 'listening' | 'error';
@@ -726,7 +742,7 @@ export function SamanthaOrb() {
         if (msg.type === 'session.updated') {
           setState('listening');
           setMicActive(usedMic);
-          setHint(usedMic ? 'Voice and text ready · microphone on' : 'Text ready · microphone off');
+          setHint(readyHint(usedMic));
           void persistSamanthaEvent({
             role: 'buyer',
             sessionId: transcriptSessionIdRef.current,
@@ -886,6 +902,14 @@ export function SamanthaOrb() {
     if (startInFlightRef.current || state === 'listening' || state === 'connecting') return;
     startInFlightRef.current = true;
     try {
+      try {
+        await syncBuyerAgentGuardStatus(walletAddress);
+      } catch {
+        /* status is optional; opening chat must not resume authority */
+      }
+      if (shoppingAgentIsPaused()) {
+        setHint('Shopping agent is paused. I can still search; checkout stays with you.');
+      }
       await startSessionConnection();
     } finally {
       startInFlightRef.current = false;

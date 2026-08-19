@@ -1,12 +1,13 @@
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { resetBuyerAgentAuthority } from '../lib/buyerAgentAuthority';
 
 // Extend Vitest's expect with DOM assertions
 import '@testing-library/jest-dom';
 
-// Cleanup after each test
 afterEach(() => {
   cleanup();
+  resetBuyerAgentAuthority();
 });
 
 // Mock window.matchMedia

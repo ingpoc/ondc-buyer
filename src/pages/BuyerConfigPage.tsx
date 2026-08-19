@@ -15,10 +15,16 @@ import type {
 import {
   compileBuyerMandate,
   confirmBuyerMandate,
-  fetchBuyerAgentGuardStatus,
   setBuyerAgentPaused,
+  syncBuyerAgentGuardStatus,
   verifyBuyerReceipt,
 } from '../lib/agentGuardCheckout';
+import {
+  buyerShoppingAgentLabel,
+  getBuyerAgentAuthority,
+  resetBuyerAgentAuthority,
+  subscribeBuyerAgentAuthority,
+} from '../lib/buyerAgentAuthority';
 import {
   emptySamanthaMemory,
   loadSamanthaMemoryMerged,
@@ -93,22 +99,19 @@ export function BuyerConfigPage() {
   const refresh = useCallback(async () => {
     setMemory(loadSamanthaMemoryMerged(subjectId));
     if (!subjectId) {
+      resetBuyerAgentAuthority();
       setAgent(null);
       setReceipts([]);
       return;
     }
     try {
-      const status = await fetchBuyerAgentGuardStatus(walletAddress);
-      setAgent(status.agent);
-      setReceipts(status.receipts);
-      setMandateStatus(status.mandate?.status ?? null);
-      const auto = status.mandate?.limits?.auto_approve_max_inr as
-        | Record<string, number>
-        | undefined;
-      if (auto?.['buyer.checkout.commit'] != null) {
-        const saved = Number(auto['buyer.checkout.commit']);
-        setCheckoutAutoMax(saved);
-        setSavedCheckoutAutoMax(saved);
+      const { snapshot } = await syncBuyerAgentGuardStatus(walletAddress);
+      setAgent(snapshot.agent);
+      setReceipts(snapshot.receipts);
+      setMandateStatus(snapshot.mandateStatus);
+      if (snapshot.checkoutAutoMax != null) {
+        setCheckoutAutoMax(snapshot.checkoutAutoMax);
+        setSavedCheckoutAutoMax(snapshot.checkoutAutoMax);
       }
     } catch {
       /* ignore */
@@ -118,6 +121,15 @@ export function BuyerConfigPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    return subscribeBuyerAgentAuthority(() => {
+      const snapshot = getBuyerAgentAuthority();
+      setAgent(snapshot.agent);
+      setReceipts(snapshot.receipts);
+      if (snapshot.mandateStatus) setMandateStatus(snapshot.mandateStatus);
+    });
+  }, []);
 
   useEffect(() => {
     const refreshMemory = () => setMemory(loadSamanthaMemoryMerged(subjectId));
@@ -590,11 +602,7 @@ export function BuyerConfigPage() {
                         : 'No limit yet'}
                   </Badge>
                   <Badge variant={agent?.status === 'active' ? 'default' : 'outline'}>
-                    {agent?.status === 'active'
-                      ? 'Shopping agent on'
-                      : agent?.status === 'paused'
-                        ? 'Shopping agent paused'
-                        : 'Shopping agent off'}
+                    {buyerShoppingAgentLabel(agent?.status, 'preferences')}
                   </Badge>
                   <Button
                     type="button"
