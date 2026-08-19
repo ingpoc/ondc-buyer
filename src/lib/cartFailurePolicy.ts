@@ -48,3 +48,17 @@ export function cartAddNotice(params: { title: string; authenticated: boolean })
 export function cartAddBlockedNotice(): string {
   return 'Sign in to add items and check out.';
 }
+
+/** Success copy is allowed only when the cart store that /cart reads actually holds the item. */
+export function cartAddOutcomeNotice(params: {
+  title: string;
+  authenticated: boolean;
+  persisted: boolean;
+}): string {
+  if (!params.persisted) {
+    return params.authenticated
+      ? 'Unable to add this item. Please try again.'
+      : cartAddBlockedNotice();
+  }
+  return cartAddNotice({ title: params.title, authenticated: params.authenticated });
+}

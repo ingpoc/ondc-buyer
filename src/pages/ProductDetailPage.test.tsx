@@ -33,7 +33,9 @@ describe('ProductDetailPage decision context', () => {
   beforeEach(() => {
     execute.mockReset();
     addToCart.mockReset();
-    addToCart.mockResolvedValue(undefined);
+    addToCart.mockResolvedValue({
+      items: [{ item: { id: 'item-1', name: 'Fresh Farm Toor Dal 1kg' } }],
+    });
     productState.quantity = 7;
   });
 

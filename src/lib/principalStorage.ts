@@ -3,6 +3,7 @@ const ACTIVE_PRINCIPAL_KEY = 'ondc-active-principal';
 const UNSCOPED_LOCAL_KEYS = [
   'ondc-session-id',
   'ondc-local-cart-session',
+  'ondc-local-cart-active',
   'ondc-local-demo-orders',
   'ondc-local-support-cases',
   'ondc-buyer-agent-ui-state',
@@ -36,12 +37,21 @@ export function clearUnscopedBuyerSessionData() {
   for (const key of UNSCOPED_SESSION_KEYS) sessionStorage.removeItem(key);
 }
 
-/** Clear unscoped state whenever the authenticated principal changes, including logout. */
+/**
+ * True when unscoped cart/session data must be dropped.
+ * Guest and "signed in for a different app" both sync as empty — that must not
+ * wipe cart preparation. Logout and Buyer principal switches still clear.
+ */
+export function shouldClearUnscopedBuyerData(previous: string, next: string): boolean {
+  return Boolean(previous) && previous !== next;
+}
+
+/** Clear unscoped state when leaving or switching an authenticated Buyer principal. */
 export function syncBuyerPrincipalSession(subjectId: string | null | undefined) {
   if (typeof window === 'undefined') return;
   const next = subjectId?.trim() || '';
   const previous = localStorage.getItem(ACTIVE_PRINCIPAL_KEY) || '';
-  if (previous !== next || !next) {
+  if (shouldClearUnscopedBuyerData(previous, next)) {
     clearUnscopedBuyerSessionData();
   }
   if (next) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatCartApiError,
   cartAddNotice,
+  cartAddOutcomeNotice,
   shouldFallbackLocalOnCartError,
   shouldUseLocalCartFallback,
 } from './cartFailurePolicy';
@@ -34,6 +35,18 @@ describe('cart failure policy', () => {
     expect(cartAddNotice({ title: 'Atta 1kg', authenticated: false })).toBe(
       'Atta 1kg added to cart. Sign in to check out.',
     );
+  });
+
+  it('never claims an add succeeded unless the cart store actually has the item', () => {
+    expect(
+      cartAddOutcomeNotice({ title: 'Atta 1kg', authenticated: false, persisted: true }),
+    ).toBe('Atta 1kg added to cart. Sign in to check out.');
+    expect(
+      cartAddOutcomeNotice({ title: 'Atta 1kg', authenticated: false, persisted: false }),
+    ).toBe('Sign in to add items and check out.');
+    expect(
+      cartAddOutcomeNotice({ title: 'Atta 1kg', authenticated: true, persisted: false }),
+    ).toBe('Unable to add this item. Please try again.');
   });
 
   it('formats live commerce API errors for user-facing cart flows', () => {
