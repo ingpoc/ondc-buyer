@@ -28,6 +28,12 @@ const EMPTY: BuyerAgentAuthoritySnapshot = {
 let snapshot: BuyerAgentAuthoritySnapshot = { ...EMPTY };
 /** Bumped on pause/resume so in-flight status GETs cannot overwrite the control. */
 let pollEpoch = 0;
+/**
+ * Last Pause/Resume click. Resume must not be undone by a later GET that still
+ * says paused (or by rewriting active→paused). Initial polls may still adopt
+ * server paused when this is null.
+ */
+let lastExplicitControl: 'pause' | 'resume' | null = null;
 
 function emit(): void {
   if (typeof window === 'undefined') return;
@@ -61,6 +67,7 @@ export function checkoutAutoMaxFromMandate(mandate?: Mandate | null): number | n
 
 export function resetBuyerAgentAuthority(): void {
   snapshot = { ...EMPTY };
+  lastExplicitControl = null;
   pollEpoch += 1;
   emit();
 }
@@ -71,9 +78,16 @@ function withPausedAgent(agent: AgentRef | null): AgentRef | null {
   return { ...agent, status: 'paused' };
 }
 
+function withActiveAgent(agent: AgentRef | null): AgentRef | null {
+  if (!agent) return agent;
+  if (agent.status === 'active' || agent.status === 'revoked') return agent;
+  return { ...agent, status: 'active' };
+}
+
 /**
  * Apply a status GET. Must not unpause: Pause is sticky until Resume.
- * Stale polls (epoch mismatch) are ignored.
+ * After Resume, polls must not re-pause (stale paused) or revive sticky rewrite
+ * (active→paused). Stale polls (epoch mismatch) are ignored.
  */
 export function applyBuyerAgentPoll(
   status: AgentGuardStatusPayload,
@@ -85,7 +99,12 @@ export function applyBuyerAgentPoll(
   let explicitPaused = snapshot.explicitPaused;
   let agent = incoming;
 
-  if (incoming?.status === 'paused') {
+  if (lastExplicitControl === 'resume') {
+    explicitPaused = false;
+    if (incoming?.status === 'paused') {
+      agent = withActiveAgent(incoming);
+    }
+  } else if (incoming?.status === 'paused') {
     explicitPaused = true;
   } else if (explicitPaused && incoming?.status === 'active') {
     agent = withPausedAgent(incoming);
@@ -106,9 +125,10 @@ export function applyBuyerAgentPoll(
 /** Apply Pause/Resume. Only Resume clears the sticky paused flag. */
 export function applyBuyerAgentControl(agent: AgentRef, paused: boolean): BuyerAgentAuthoritySnapshot {
   pollEpoch += 1;
+  lastExplicitControl = paused ? 'pause' : 'resume';
   snapshot = {
     ...snapshot,
-    agent: paused ? withPausedAgent(agent) : agent,
+    agent: paused ? withPausedAgent(agent) : withActiveAgent(agent),
     explicitPaused: paused,
   };
   emit();

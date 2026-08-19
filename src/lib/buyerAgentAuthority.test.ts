@@ -79,6 +79,53 @@ describe('Buyer agent pause authority store', () => {
     expect(getBuyerAgentAuthority().agent?.status).toBe('paused');
   });
 
+  it('stores Resume as active even if the control response still says paused', () => {
+    applyBuyerAgentControl(agent('paused'), true);
+    applyBuyerAgentControl(agent('paused'), false);
+    expect(getBuyerAgentAuthority().explicitPaused).toBe(false);
+    expect(getBuyerAgentAuthority().agent?.status).toBe('active');
+  });
+
+  it('does not re-pause after one Resume when a later poll still reports paused', () => {
+    applyBuyerAgentControl(agent('paused'), true);
+    applyBuyerAgentControl(agent('active'), false);
+
+    const afterPoll = applyBuyerAgentPoll({
+      agent: agent('paused'),
+      mandate: mandate(),
+      receipts,
+    });
+
+    expect(afterPoll.explicitPaused).toBe(false);
+    expect(afterPoll.agent?.status).toBe('active');
+    expect(getBuyerAgentAuthority().agent?.status).toBe('active');
+  });
+
+  it('does not revive sticky pause after one Resume when a later poll reports active', () => {
+    applyBuyerAgentControl(agent('paused'), true);
+    applyBuyerAgentControl(agent('active'), false);
+
+    const afterPoll = applyBuyerAgentPoll({
+      agent: agent('active'),
+      mandate: mandate(),
+      receipts,
+    });
+
+    expect(afterPoll.explicitPaused).toBe(false);
+    expect(afterPoll.agent?.status).toBe('active');
+  });
+
+  it('drops a paused poll that started before resume', () => {
+    applyBuyerAgentControl(agent('paused'), true);
+    const staleEpoch = currentBuyerAgentPollEpoch();
+    applyBuyerAgentControl(agent('active'), false);
+
+    applyBuyerAgentPoll({ agent: agent('paused'), mandate: mandate(), receipts }, staleEpoch);
+
+    expect(getBuyerAgentAuthority().explicitPaused).toBe(false);
+    expect(getBuyerAgentAuthority().agent?.status).toBe('active');
+  });
+
   it('uses the same paused wording family on Preferences and Checkout', () => {
     expect(buyerShoppingAgentLabel('paused', 'preferences')).toContain('paused');
     expect(buyerShoppingAgentLabel('paused', 'checkout')).toContain('paused');

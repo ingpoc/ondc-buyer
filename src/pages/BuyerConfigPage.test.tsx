@@ -160,4 +160,56 @@ describe('Buyer agent pause authority', () => {
     );
     expect(screen.getByTestId('buyer-config-agent-note')).toHaveTextContent('Agent resumed');
   });
+
+  it('one Resume click stays on when a later poll still reports paused', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.includes('/agents/agent-buyer-1/pause') && method === 'POST') {
+        return jsonResponse({ agent: agentPayload('paused').agent });
+      }
+      if (url.includes('/agents/agent-buyer-1/resume') && method === 'POST') {
+        return jsonResponse({ agent: agentPayload('paused').agent });
+      }
+      if (url.includes('/ensure')) {
+        throw new Error('ensure must not run as a pause/resume side effect');
+      }
+      if (url.includes('/api/realtime/')) {
+        return jsonResponse({ configured: false });
+      }
+      return jsonResponse(agentPayload('paused'));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/config?tab=agent-guard']}>
+        <BuyerConfigPage />
+        <SamanthaOrb />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Shopping agent paused')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Resume shopping agent' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('buyer-config-toggle-agent'));
+    await waitFor(() => expect(screen.getByText('Shopping agent on')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Pause shopping agent' })).toBeInTheDocument();
+
+    const { syncBuyerAgentGuardStatus } = await import('../lib/agentGuardCheckout');
+    await waitFor(async () => {
+      const afterPoll = await syncBuyerAgentGuardStatus();
+      expect(afterPoll.snapshot.agent?.status).toBe('active');
+      expect(afterPoll.snapshot.explicitPaused).toBe(false);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Samantha' }));
+    expect(await screen.findByRole('dialog', { name: 'Samantha' })).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Shopping agent on')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Pause shopping agent' })).toBeInTheDocument();
+    expect(getBuyerAgentAuthority().explicitPaused).toBe(false);
+    expect(getBuyerAgentAuthority().agent?.status).toBe('active');
+    expect(
+      fetchMock.mock.calls.filter((call) => String((call as unknown[])[0]).includes('/resume')),
+    ).toHaveLength(1);
+  });
 });

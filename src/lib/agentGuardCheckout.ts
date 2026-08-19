@@ -9,6 +9,7 @@ import {
   applyBuyerAgentControl,
   applyBuyerAgentPoll,
   currentBuyerAgentPollEpoch,
+  getBuyerAgentAuthority,
   invalidateBuyerAgentPolls,
 } from './buyerAgentAuthority';
 import { TRUST_API_URL } from './identityUrls';
@@ -289,18 +290,30 @@ export async function syncBuyerAgentGuardStatus(walletAddress?: string | null) {
 }
 
 export async function setBuyerAgentPaused(params: { agentId: string; paused: boolean }) {
-  invalidateBuyerAgentPolls();
-  const operation = params.paused ? 'pause' : 'resume';
-  const response = await fetch(
-    `${TRUST_API_URL}/api/agentguard/agents/${params.agentId}/${operation}`,
-    {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+  const previous = getBuyerAgentAuthority();
+  if (previous.agent?.agent_id === params.agentId) {
+    applyBuyerAgentControl(previous.agent, params.paused);
+  } else {
+    invalidateBuyerAgentPolls();
+  }
+  try {
+    const operation = params.paused ? 'pause' : 'resume';
+    const response = await fetch(
+      `${TRUST_API_URL}/api/agentguard/agents/${params.agentId}/${operation}`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }
+    );
+    const result = await parseData<{ agent: AgentRef }>(response);
+    const snapshot = applyBuyerAgentControl(result.agent, params.paused);
+    return { agent: snapshot.agent ?? result.agent };
+  } catch (error) {
+    if (previous.agent) {
+      applyBuyerAgentControl(previous.agent, previous.explicitPaused);
     }
-  );
-  const result = await parseData<{ agent: AgentRef }>(response);
-  applyBuyerAgentControl(result.agent, params.paused);
-  return result;
+    throw error;
+  }
 }

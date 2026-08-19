@@ -156,6 +156,40 @@ describe('Buyer AgentGuard controls', () => {
     expect(getBuyerAgentAuthority().explicitPaused).toBe(true);
   });
 
+  it('one Resume stays on when the control response and later polls still say paused', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        if (url.includes('/pause') && method === 'POST') {
+          return apiResponse({
+            agent: { agent_id: 'agent-buyer-1', status: 'paused', role: 'buyer', principal_id: 'principal:demo:buyer' },
+          });
+        }
+        if (url.includes('/resume') && method === 'POST') {
+          return apiResponse({
+            agent: { agent_id: 'agent-buyer-1', status: 'paused', role: 'buyer', principal_id: 'principal:demo:buyer' },
+          });
+        }
+        return apiResponse({
+          agent: { agent_id: 'agent-buyer-1', status: 'paused', role: 'buyer', principal_id: 'principal:demo:buyer' },
+          mandate: { mandate_id: 'mandate-1', status: 'active' },
+          receipts: [],
+        });
+      }),
+    );
+
+    await setBuyerAgentPaused({ agentId: 'agent-buyer-1', paused: true });
+    const resumed = await setBuyerAgentPaused({ agentId: 'agent-buyer-1', paused: false });
+    expect(resumed.agent.status).toBe('active');
+    expect(getBuyerAgentAuthority().explicitPaused).toBe(false);
+
+    const { snapshot } = await syncBuyerAgentGuardStatus();
+    expect(snapshot.agent?.status).toBe('active');
+    expect(getBuyerAgentAuthority().explicitPaused).toBe(false);
+  });
+
   it('executes non-checkout mutations only through AgentGuard', async () => {
     const fetchMock = vi.fn(async () =>
       apiResponse({
