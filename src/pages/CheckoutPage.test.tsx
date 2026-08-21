@@ -4,8 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { UCPAddress } from '../types';
 import {
   checkoutActionDisabled,
+  checkoutAuthorizeButtonLabel,
   checkoutFormReady,
   checkoutDecisionStep,
+  checkoutPaymentDetailsCopy,
   collapseDuplicatedRegion,
   DeliveryAddressForm,
   ExactApprovalReview,
@@ -132,6 +134,53 @@ describe('Exact checkout approval', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm exact approval and place order' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onKeepReviewing).not.toHaveBeenCalled();
+  });
+
+  it('names Razorpay Test Mode when sandbox checkout is on', () => {
+    render(
+      <ExactApprovalReview
+        amountInr={178}
+        quantity={1}
+        itemName="Atta"
+        sellerName="Sunrise Foods"
+        submitting={false}
+        approvalAvailable
+        razorpayTestMode
+        onConfirm={() => undefined}
+        onKeepReviewing={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(/Razorpay Checkout Test Mode/i)).toBeVisible();
+    expect(screen.getByText(/no real money/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Confirm exact approval and pay in Test Mode' })).toBeVisible();
+  });
+});
+
+describe('checkout payment rail copy', () => {
+  it('keeps the simulated authorize path when Razorpay sandbox is off', () => {
+    expect(checkoutPaymentDetailsCopy(false)).toMatch(/No bank, card, UPI/i);
+    expect(
+      checkoutAuthorizeButtonLabel({
+        trustBlocksCheckout: false,
+        submitting: false,
+        prepared: true,
+        razorpayTestMode: false,
+      }),
+    ).toBe('Authorize exact total and place order');
+  });
+
+  it('labels Checkout Test Mode and no real money when Razorpay sandbox is on', () => {
+    expect(checkoutPaymentDetailsCopy(true)).toMatch(/Test Mode/i);
+    expect(checkoutPaymentDetailsCopy(true)).toMatch(/no real money/i);
+    expect(
+      checkoutAuthorizeButtonLabel({
+        trustBlocksCheckout: false,
+        submitting: false,
+        prepared: true,
+        razorpayTestMode: true,
+      }),
+    ).toBe('Pay with Razorpay Test Mode');
   });
 });
 
