@@ -2,14 +2,15 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  AWAITING_RAZORPAY_TEST_PAYMENT,
   assertRazorpayTestKey,
   collectRazorpayTestPayment,
   confirmRazorpayTestPayment,
   fetchRazorpaySandboxStatus,
-  maybeCollectRazorpayTestPayment,
   openRazorpayTestCheckout,
   razorpaySandboxConfigured,
   RazorpayLiveKeyError,
+  shouldCollectRazorpayTestPayment,
   type RazorpayCheckoutSignature,
 } from './razorpayCheckout';
 
@@ -46,6 +47,24 @@ const signature: RazorpayCheckoutSignature = {
   razorpay_signature: 'sig_test_1',
 };
 
+const simulatedRail = {
+  rail: 'simulated',
+  simulated: true,
+  mode: null,
+  key_id: null,
+  currency: 'INR',
+  message: 'Razorpay Test Mode keys are not configured; payment is simulated.',
+};
+
+const testRail = {
+  rail: 'razorpay_test',
+  simulated: false,
+  mode: 'test',
+  key_id: 'rzp_test_x',
+  currency: 'INR',
+  message: 'Razorpay Test Mode. Mock UPI/cards only. No live customer money.',
+};
+
 describe('Razorpay Checkout Test Mode', () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -56,45 +75,57 @@ describe('Razorpay Checkout Test Mode', () => {
     delete window.Razorpay;
   });
 
-  it('does not treat a missing gateway route as Razorpay configured', () => {
+  it('does not treat a missing or invented configured flag as Razorpay Test Mode', () => {
     expect(razorpaySandboxConfigured({ detail: 'Not Found' })).toEqual({ configured: false });
     expect(
-      razorpaySandboxConfigured({ success: true, data: { configured: false } }),
+      razorpaySandboxConfigured({ success: true, data: { configured: true, key_id: 'rzp_test_x' } }),
+    ).toEqual({ configured: false });
+    expect(
+      razorpaySandboxConfigured({ success: true, data: { payment_rail: simulatedRail } }),
     ).toEqual({ configured: false });
   });
 
-  it('enables Test Mode only for sandbox hints and never for rzp_live_ keys', () => {
+  it('enables Test Mode only for payment_rail.rail=razorpay_test and never for rzp_live_', () => {
     expect(
       razorpaySandboxConfigured({
         success: true,
-        data: { configured: true, mode: 'test', key_id: 'rzp_test_x' },
+        data: { payment_rail: testRail },
       }),
     ).toEqual({ configured: true, keyId: 'rzp_test_x' });
     expect(
       razorpaySandboxConfigured({
         success: true,
-        data: { configured: true, key_id: 'rzp_live_x' },
+        data: {
+          payment_rail: { ...testRail, key_id: 'rzp_live_x' },
+        },
       }),
     ).toEqual({ configured: false });
     expect(() => assertRazorpayTestKey('rzp_live_x')).toThrow(RazorpayLiveKeyError);
   });
 
-  it('keeps the simulated path when the gateway says Razorpay is off', async () => {
-    fetchMock.mockImplementation(() => jsonResponse({ detail: 'Not Found' }, 404));
+  it('keeps the simulated path when GET /payments/config says keys are missing', async () => {
+    fetchMock.mockImplementation(() =>
+      jsonResponse({ success: true, message: simulatedRail.message, data: { payment_rail: simulatedRail } }),
+    );
 
     await expect(fetchRazorpaySandboxStatus()).resolves.toEqual({ configured: false });
-    await expect(
-      maybeCollectRazorpayTestPayment(false, {
-        quoteId: 'quote-1',
-        amountPaise: 17800,
-        correlationId: 'corr-1',
-        idempotencyKey: 'attempt-1:execute',
-      }),
-    ).resolves.toBeNull();
+    expect(shouldCollectRazorpayTestPayment('EXECUTED_AND_VERIFIED')).toBe(false);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/payments/razorpay');
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/orders');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/payments/config');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/razorpay/orders');
+  });
+
+  it('treats a missing config route as simulated, not configured', async () => {
+    fetchMock.mockImplementation(() => jsonResponse({ detail: 'Not Found' }, 404));
+    await expect(fetchRazorpaySandboxStatus()).resolves.toEqual({ configured: false });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/payments/config');
+  });
+
+  it('collects Checkout only after AgentGuard returns AWAITING_RAZORPAY_TEST_PAYMENT', () => {
+    expect(shouldCollectRazorpayTestPayment(AWAITING_RAZORPAY_TEST_PAYMENT)).toBe(true);
+    expect(shouldCollectRazorpayTestPayment(undefined)).toBe(false);
+    expect(shouldCollectRazorpayTestPayment('PAYMENT_STATUS_UNKNOWN')).toBe(false);
   });
 
   it('refuses to open the Checkout overlay when a live key appears', async () => {
@@ -102,9 +133,10 @@ describe('Razorpay Checkout Test Mode', () => {
 
     await expect(
       openRazorpayTestCheckout({
-        keyId: 'rzp_live_x',
-        orderId: 'order_live_1',
+        key: 'rzp_live_x',
+        order_id: 'order_live_1',
         amount: 17800,
+        currency: 'INR',
       }),
     ).rejects.toThrow(/live keys are not allowed/i);
 
@@ -112,33 +144,38 @@ describe('Razorpay Checkout Test Mode', () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('opens Checkout with the public test key and POSTs the signature to confirm', async () => {
+  it('creates a Razorpay order on the commerce order path then POSTs only the signature fields', async () => {
     const { ctor, open } = installRazorpay(signature);
     fetchMock
       .mockImplementationOnce(() =>
         jsonResponse({
           success: true,
           data: {
-            key_id: 'rzp_test_x',
-            order_id: 'order_test_1',
-            amount: 17800,
-            currency: 'INR',
+            order: { order_id: 'commerce-order-1' },
+            payment_attempt: { status: 'pending' },
+            payment_rail: testRail,
+            razorpay: {
+              key: 'rzp_test_x',
+              amount: 17800,
+              currency: 'INR',
+              order_id: 'order_test_1',
+              name: 'AgentGuard',
+              description: 'ONDC Buyer checkout (Razorpay Test Mode)',
+            },
           },
         }),
       )
       .mockImplementationOnce(() =>
         jsonResponse({
           success: true,
-          data: { verified: true, payment_id: 'pay_test_1' },
+          data: { order: { status: 'paid' }, payment_attempt: { status: 'succeeded' } },
         }),
       );
 
     await expect(
       collectRazorpayTestPayment({
-        quoteId: 'quote-1',
-        amountPaise: 17800,
+        commerceOrderId: 'commerce-order-1',
         correlationId: 'buyer-checkout:attempt-1',
-        idempotencyKey: 'attempt-1:execute',
       }),
     ).resolves.toEqual(signature);
 
@@ -152,18 +189,21 @@ describe('Razorpay Checkout Test Mode', () => {
     expect(open).toHaveBeenCalledTimes(1);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/payments/razorpay/orders');
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-      quote_id: 'quote-1',
-      amount_paise: 17800,
-      currency: 'INR',
-    });
-    expect(String(fetchMock.mock.calls[1][0])).toContain('/payments/razorpay/confirm');
+    expect(String(fetchMock.mock.calls[0][0])).toContain(
+      '/orders/commerce-order-1/razorpay/orders',
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/payments/razorpay/orders');
+    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
+    expect(JSON.stringify(fetchMock.mock.calls[0][1])).not.toMatch(/quote_id/);
+
+    expect(String(fetchMock.mock.calls[1][0])).toContain(
+      '/orders/commerce-order-1/razorpay/confirm',
+    );
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain('/payments/razorpay/confirm');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
       razorpay_order_id: 'order_test_1',
       razorpay_payment_id: 'pay_test_1',
       razorpay_signature: 'sig_test_1',
-      quote_id: 'quote-1',
     });
   });
 
@@ -172,34 +212,44 @@ describe('Razorpay Checkout Test Mode', () => {
     fetchMock.mockImplementationOnce(() =>
       jsonResponse({
         success: true,
-        data: { key_id: 'rzp_live_x', order_id: 'order_live_1', amount: 17800 },
+        data: {
+          payment_rail: { ...testRail, key_id: 'rzp_live_x' },
+          razorpay: { key: 'rzp_live_x', amount: 17800, currency: 'INR', order_id: 'order_live_1' },
+        },
       }),
     );
 
     await expect(
-      collectRazorpayTestPayment({
-        quoteId: 'quote-1',
-        amountPaise: 17800,
-        correlationId: 'corr-1',
-        idempotencyKey: 'attempt-1:execute',
-      }),
+      collectRazorpayTestPayment({ commerceOrderId: 'commerce-order-1' }),
     ).rejects.toThrow(/live keys are not allowed/i);
     expect(ctor).not.toHaveBeenCalled();
   });
 
-  it('does not put a key secret on the confirm payload', async () => {
+  it('does not put a key secret or quote_id on the confirm payload', async () => {
     fetchMock.mockImplementationOnce(() => jsonResponse({ success: true, data: { verified: true } }));
 
-    await confirmRazorpayTestPayment(signature, { quoteId: 'quote-1' });
+    await confirmRazorpayTestPayment('commerce-order-1', signature);
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as Record<string, unknown>;
+    expect(body).toEqual({
+      razorpay_order_id: 'order_test_1',
+      razorpay_payment_id: 'pay_test_1',
+      razorpay_signature: 'sig_test_1',
+    });
     expect(body).not.toHaveProperty('key_secret');
     expect(body).not.toHaveProperty('secret');
+    expect(body).not.toHaveProperty('quote_id');
     expect(JSON.stringify(body)).not.toMatch(/rzp_live_/);
   });
 
-  it('keeps the key secret and demo-mode switch out of the SPA client', () => {
+  it('keeps the key secret, demo-mode switch, and retired payment paths out of the SPA client', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/lib/razorpayCheckout.ts'), 'utf8');
     expect(source).not.toMatch(/key_secret|KEY_SECRET|VITE_RAZORPAY|VITE_COMMERCE_DEMO_MODE/);
+    expect(source).not.toMatch(/\/payments\/razorpay\/orders/);
+    expect(source).not.toMatch(/\/payments\/razorpay\/confirm/);
+    expect(source).not.toMatch(/\/payments\/razorpay\/webhook/);
+    expect(source).toContain('/api/commerce/v1/payments/config');
+    expect(source).toContain('/razorpay/orders');
+    expect(source).toContain('/razorpay/confirm');
   });
 });

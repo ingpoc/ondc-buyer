@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -181,6 +183,20 @@ describe('checkout payment rail copy', () => {
         razorpayTestMode: true,
       }),
     ).toBe('Pay with Razorpay Test Mode');
+  });
+
+  it('collects Razorpay only after AgentGuard execute, on the gateway order-scoped paths', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/CheckoutPage.tsx'), 'utf8');
+    const complete = source.slice(source.indexOf('async function completeAuthorizedCheckout'));
+    const executeAt = complete.indexOf('executeBuyerCheckout(executionRequest)');
+    const collectAt = complete.indexOf('collectRazorpayTestPayment({');
+    expect(executeAt).toBeGreaterThan(-1);
+    expect(collectAt).toBeGreaterThan(executeAt);
+    expect(source).toContain('shouldCollectRazorpayTestPayment(executed.reason_code)');
+    expect(source).not.toMatch(/\/payments\/razorpay\/orders/);
+    expect(source).not.toMatch(/\/payments\/razorpay\/confirm/);
+    expect(source).not.toMatch(/maybeCollectRazorpayTestPayment/);
+    expect(source).not.toMatch(/VITE_COMMERCE_DEMO_MODE/);
   });
 });
 

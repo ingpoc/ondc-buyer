@@ -3,10 +3,9 @@ import { TRUST_API_URL } from './identityUrls';
 export const RAZORPAY_CHECKOUT_SCRIPT_URL = 'https://checkout.razorpay.com/v1/checkout.js';
 export const RAZORPAY_TEST_KEY_PREFIX = 'rzp_test_';
 export const RAZORPAY_LIVE_KEY_PREFIX = 'rzp_live_';
+export const AWAITING_RAZORPAY_TEST_PAYMENT = 'AWAITING_RAZORPAY_TEST_PAYMENT';
 
-const RAZORPAY_STATUS_PATH = '/api/commerce/v1/payments/razorpay';
-const RAZORPAY_ORDER_PATH = '/api/commerce/v1/payments/razorpay/orders';
-const RAZORPAY_CONFIRM_PATH = '/api/commerce/v1/payments/razorpay/confirm';
+const PAYMENTS_CONFIG_PATH = '/api/commerce/v1/payments/config';
 
 export interface RazorpayCheckoutSignature {
   razorpay_order_id: string;
@@ -14,16 +13,27 @@ export interface RazorpayCheckoutSignature {
   razorpay_signature: string;
 }
 
-export interface RazorpayTestOrder {
-  keyId: string;
-  orderId: string;
+export interface RazorpayCheckoutOptionsPayload {
+  key: string;
   amount: number;
   currency: string;
+  order_id: string;
+  name?: string;
+  description?: string;
 }
+
+export type PaymentRail = {
+  rail: string;
+  simulated: boolean;
+  mode: string | null;
+  key_id: string | null;
+  currency: string;
+  message: string;
+};
 
 export type RazorpaySandboxStatus =
   | { configured: false }
-  | { configured: true; keyId?: string };
+  | { configured: true; keyId: string };
 
 export interface RazorpayCheckoutPrefill {
   name?: string;
@@ -41,8 +51,6 @@ interface RazorpayCheckoutOptions {
   handler: (response: RazorpayCheckoutSignature) => void;
   prefill?: RazorpayCheckoutPrefill;
   modal?: { ondismiss?: () => void };
-  notes?: Record<string, string>;
-  theme?: { color?: string };
 }
 
 interface RazorpayCheckoutInstance {
@@ -58,13 +66,6 @@ declare global {
   }
 }
 
-interface ApiEnvelope {
-  success?: boolean;
-  data?: unknown;
-  detail?: string;
-  message?: string;
-}
-
 export class RazorpayLiveKeyError extends Error {
   constructor(message = 'Razorpay live keys are not allowed. Checkout Test Mode only accepts rzp_test_.') {
     super(message);
@@ -76,11 +77,18 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 
-export function unwrapGatewayData(payload: unknown): Record<string, unknown> {
-  const root = asRecord(payload);
-  const data = asRecord(root.data ?? root);
-  const nested = asRecord(data.razorpay);
-  return Object.keys(nested).length > 0 ? { ...data, ...nested } : data;
+function readString(data: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function readAmountPaise(data: Record<string, unknown>): number | undefined {
+  const parsed = typeof data.amount === 'number' ? data.amount : typeof data.amount === 'string' ? Number(data.amount) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  return undefined;
 }
 
 export function isRazorpayLiveKey(keyId: string | null | undefined): boolean {
@@ -102,45 +110,41 @@ export function assertRazorpayTestKey(keyId: string): string {
   return trimmed;
 }
 
-function readString(data: Record<string, unknown>, ...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = data[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
-function readAmountPaise(data: Record<string, unknown>, fallback: number): number {
-  const paiseCandidates = [data.amount_paise, data.amountPaise, data.amount];
-  for (const value of paiseCandidates) {
-    const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
-  }
-  const rupees = data.amount_inr ?? data.amountInr;
-  const parsedRupees = typeof rupees === 'number' ? rupees : typeof rupees === 'string' ? Number(rupees) : NaN;
-  if (Number.isFinite(parsedRupees) && parsedRupees > 0) return Math.round(parsedRupees * 100);
-  return fallback;
+export function paymentRailFromConfig(payload: unknown): PaymentRail | null {
+  const root = asRecord(payload);
+  const data = asRecord(root.data ?? root);
+  const rail = asRecord(data.payment_rail);
+  if (typeof rail.rail !== 'string' || !rail.rail.trim()) return null;
+  return {
+    rail: rail.rail,
+    simulated: rail.simulated === true,
+    mode: typeof rail.mode === 'string' ? rail.mode : null,
+    key_id: typeof rail.key_id === 'string' && rail.key_id.trim() ? rail.key_id.trim() : null,
+    currency: typeof rail.currency === 'string' && rail.currency.trim() ? rail.currency : 'INR',
+    message: typeof rail.message === 'string' ? rail.message : '',
+  };
 }
 
 export function razorpaySandboxConfigured(payload: unknown): RazorpaySandboxStatus {
-  const data = unwrapGatewayData(payload);
-  const keyId = readString(data, 'key_id', 'keyId', 'key');
-  if (keyId && isRazorpayLiveKey(keyId)) return { configured: false };
-  if (data.mode === 'live' || data.live === true) return { configured: false };
-  if (data.configured === false || data.enabled === false || data.available === false) {
-    return { configured: false };
-  }
-  const testHint =
-    data.configured === true ||
-    data.enabled === true ||
-    data.available === true ||
-    data.sandbox === true ||
-    data.mode === 'test' ||
-    data.provider === 'razorpay';
-  if (testHint || isRazorpayTestKey(keyId)) {
-    return keyId ? { configured: true, keyId } : { configured: true };
+  const rail = paymentRailFromConfig(payload);
+  if (!rail || rail.rail === 'simulated' || rail.simulated) return { configured: false };
+  if (isRazorpayLiveKey(rail.key_id)) return { configured: false };
+  if (rail.rail === 'razorpay_test' && isRazorpayTestKey(rail.key_id)) {
+    return { configured: true, keyId: rail.key_id as string };
   }
   return { configured: false };
+}
+
+export function shouldCollectRazorpayTestPayment(reasonCode?: string | null): boolean {
+  return reasonCode === AWAITING_RAZORPAY_TEST_PAYMENT;
+}
+
+function razorpayOrderPath(commerceOrderId: string): string {
+  return `/api/commerce/v1/orders/${encodeURIComponent(commerceOrderId)}/razorpay/orders`;
+}
+
+function razorpayConfirmPath(commerceOrderId: string): string {
+  return `/api/commerce/v1/orders/${encodeURIComponent(commerceOrderId)}/razorpay/confirm`;
 }
 
 async function gatewayJson(path: string, init: RequestInit = {}): Promise<{
@@ -152,7 +156,7 @@ async function gatewayJson(path: string, init: RequestInit = {}): Promise<{
     ...init,
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init.headers ?? {}),
     },
   });
@@ -168,7 +172,7 @@ function gatewayError(payload: unknown, status: number, fallback: string): Error
 
 export async function fetchRazorpaySandboxStatus(): Promise<RazorpaySandboxStatus> {
   try {
-    const { ok, status, payload } = await gatewayJson(RAZORPAY_STATUS_PATH);
+    const { ok, status, payload } = await gatewayJson(PAYMENTS_CONFIG_PATH);
     if (status === 401 || status === 403 || status === 404 || status === 501 || status === 503) {
       return { configured: false };
     }
@@ -179,62 +183,66 @@ export async function fetchRazorpaySandboxStatus(): Promise<RazorpaySandboxStatu
   }
 }
 
-export async function createRazorpayTestOrder(params: {
-  quoteId: string;
-  amountPaise: number;
-  correlationId: string;
-  idempotencyKey: string;
-}): Promise<RazorpayTestOrder> {
-  const { ok, status, payload } = await gatewayJson(RAZORPAY_ORDER_PATH, {
-    method: 'POST',
-    headers: {
-      'Idempotency-Key': params.idempotencyKey,
-      'X-Correlation-ID': params.correlationId,
-    },
-    body: JSON.stringify({
-      quote_id: params.quoteId,
-      amount_paise: params.amountPaise,
-      currency: 'INR',
-    }),
-  });
-  const envelope = payload as ApiEnvelope;
-  if (!ok || envelope.success === false) {
-    throw gatewayError(payload, status, 'Razorpay Test Mode order was not created');
-  }
-  const data = unwrapGatewayData(payload);
-  const keyId = assertRazorpayTestKey(
-    readString(data, 'key_id', 'keyId', 'key') || '',
+export function razorpayCheckoutOptionsFromOrder(payload: unknown): RazorpayCheckoutOptionsPayload {
+  const root = asRecord(payload);
+  const data = asRecord(root.data ?? root);
+  const options = asRecord(data.razorpay);
+  const rail = asRecord(data.payment_rail);
+  const key = assertRazorpayTestKey(
+    readString(options, 'key') || readString(rail, 'key_id') || '',
   );
-  const orderId = readString(data, 'order_id', 'orderId', 'id', 'razorpay_order_id');
+  const orderId = readString(options, 'order_id');
+  const amount = readAmountPaise(options);
   if (!orderId) {
-    throw new Error('Gateway Razorpay order response did not include order_id.');
+    throw new Error('Gateway Razorpay order response did not include Checkout order_id.');
+  }
+  if (!amount) {
+    throw new Error('Gateway Razorpay order response did not include Checkout amount.');
   }
   return {
-    keyId,
-    orderId,
-    amount: readAmountPaise(data, params.amountPaise),
-    currency: readString(data, 'currency') || 'INR',
+    key,
+    amount,
+    currency: readString(options, 'currency') || 'INR',
+    order_id: orderId,
+    name: readString(options, 'name'),
+    description: readString(options, 'description'),
   };
 }
 
-export async function confirmRazorpayTestPayment(
-  signature: RazorpayCheckoutSignature,
-  params?: { quoteId?: string; correlationId?: string; idempotencyKey?: string },
-): Promise<RazorpayCheckoutSignature> {
-  const { ok, status, payload } = await gatewayJson(RAZORPAY_CONFIRM_PATH, {
+export async function createRazorpayTestOrder(params: {
+  commerceOrderId: string;
+  correlationId?: string;
+}): Promise<RazorpayCheckoutOptionsPayload> {
+  const { ok, status, payload } = await gatewayJson(razorpayOrderPath(params.commerceOrderId), {
     method: 'POST',
     headers: {
-      ...(params?.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {}),
+      ...(params.correlationId ? { 'X-Correlation-ID': params.correlationId } : {}),
+    },
+  });
+  const envelope = asRecord(payload);
+  if (!ok || envelope.success === false) {
+    throw gatewayError(payload, status, 'Razorpay Test Mode order was not created');
+  }
+  return razorpayCheckoutOptionsFromOrder(payload);
+}
+
+export async function confirmRazorpayTestPayment(
+  commerceOrderId: string,
+  signature: RazorpayCheckoutSignature,
+  params?: { correlationId?: string },
+): Promise<RazorpayCheckoutSignature> {
+  const { ok, status, payload } = await gatewayJson(razorpayConfirmPath(commerceOrderId), {
+    method: 'POST',
+    headers: {
       ...(params?.correlationId ? { 'X-Correlation-ID': params.correlationId } : {}),
     },
     body: JSON.stringify({
       razorpay_order_id: signature.razorpay_order_id,
       razorpay_payment_id: signature.razorpay_payment_id,
       razorpay_signature: signature.razorpay_signature,
-      ...(params?.quoteId ? { quote_id: params.quoteId } : {}),
     }),
   });
-  const envelope = payload as ApiEnvelope;
+  const envelope = asRecord(payload);
   if (!ok || envelope.success === false) {
     throw gatewayError(payload, status, 'Razorpay Test Mode signature was not verified');
   }
@@ -274,14 +282,11 @@ export async function loadRazorpayCheckoutScript(): Promise<RazorpayConstructor>
   return window.Razorpay;
 }
 
-export async function openRazorpayTestCheckout(params: {
-  keyId: string;
-  orderId: string;
-  amount: number;
-  currency?: string;
-  prefill?: RazorpayCheckoutPrefill;
-}): Promise<RazorpayCheckoutSignature> {
-  const keyId = assertRazorpayTestKey(params.keyId);
+export async function openRazorpayTestCheckout(
+  options: RazorpayCheckoutOptionsPayload,
+  prefill?: RazorpayCheckoutPrefill,
+): Promise<RazorpayCheckoutSignature> {
+  const keyId = assertRazorpayTestKey(options.key);
   const Razorpay = await loadRazorpayCheckoutScript();
   if (isRazorpayLiveKey(keyId)) {
     throw new RazorpayLiveKeyError();
@@ -296,12 +301,14 @@ export async function openRazorpayTestCheckout(params: {
     };
     const checkout = new Razorpay({
       key: keyId,
-      amount: params.amount,
-      currency: params.currency || 'INR',
-      name: 'ONDC Buyer',
-      description: 'Razorpay Checkout Test Mode. Mock UPI and cards only — no real money.',
-      order_id: params.orderId,
-      prefill: params.prefill,
+      amount: options.amount,
+      currency: options.currency || 'INR',
+      name: options.name || 'ONDC Buyer',
+      description:
+        options.description ||
+        'Razorpay Checkout Test Mode. Mock UPI and cards only — no real money.',
+      order_id: options.order_id,
+      prefill,
       handler: (response) => finish(() => resolve(response)),
       modal: {
         ondismiss: () =>
@@ -315,37 +322,17 @@ export async function openRazorpayTestCheckout(params: {
 }
 
 export async function collectRazorpayTestPayment(params: {
-  quoteId: string;
-  amountPaise: number;
-  correlationId: string;
-  idempotencyKey: string;
+  commerceOrderId: string;
+  correlationId?: string;
   prefill?: RazorpayCheckoutPrefill;
 }): Promise<RazorpayCheckoutSignature> {
   const created = await createRazorpayTestOrder({
-    quoteId: params.quoteId,
-    amountPaise: params.amountPaise,
+    commerceOrderId: params.commerceOrderId,
     correlationId: params.correlationId,
-    idempotencyKey: `${params.idempotencyKey}:razorpay-order`,
   });
-  const signature = await openRazorpayTestCheckout({
-    keyId: created.keyId,
-    orderId: created.orderId,
-    amount: created.amount,
-    currency: created.currency,
-    prefill: params.prefill,
-  });
-  await confirmRazorpayTestPayment(signature, {
-    quoteId: params.quoteId,
+  const signature = await openRazorpayTestCheckout(created, params.prefill);
+  await confirmRazorpayTestPayment(params.commerceOrderId, signature, {
     correlationId: params.correlationId,
-    idempotencyKey: `${params.idempotencyKey}:razorpay-confirm`,
   });
   return signature;
-}
-
-export async function maybeCollectRazorpayTestPayment(
-  sandboxConfigured: boolean,
-  params: Parameters<typeof collectRazorpayTestPayment>[0],
-): Promise<RazorpayCheckoutSignature | null> {
-  if (!sandboxConfigured) return null;
-  return collectRazorpayTestPayment(params);
 }

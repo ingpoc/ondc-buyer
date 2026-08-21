@@ -40,7 +40,11 @@ import {
   type CheckoutPrefillDetail,
 } from '../lib/checkoutPrefill';
 import { customerReference, intentReceiptLabel, sellerDisplayName } from '../lib/displayText';
-import { maybeCollectRazorpayTestPayment, fetchRazorpaySandboxStatus } from '../lib/razorpayCheckout';
+import {
+  collectRazorpayTestPayment,
+  fetchRazorpaySandboxStatus,
+  shouldCollectRazorpayTestPayment,
+} from '../lib/razorpayCheckout';
 import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import type { UCPAddress, UCPItem, UCPQuote, UCPSession } from '../types';
 import { Badge } from '../components/ui/badge';
@@ -606,25 +610,21 @@ export function CheckoutPage() {
     if (!session) throw new Error('No session found');
 
     const { runOndc, ...executionRequest } = request;
-    const razorpayStatus = await fetchRazorpaySandboxStatus();
-    if (razorpayStatus.configured !== razorpayTestMode) {
-      setRazorpayTestMode(razorpayStatus.configured);
-    }
-    await maybeCollectRazorpayTestPayment(razorpayStatus.configured, {
-      quoteId: request.quoteId,
-      amountPaise: Math.round(request.amountInr * 100),
-      correlationId: request.correlationId,
-      idempotencyKey: request.idempotencyKey ?? `${request.quoteId}:execute`,
-      prefill: {
-        name: request.deliveryContext?.name,
-        email: request.deliveryContext?.email,
-        contact: request.deliveryContext?.phone,
-      },
-    });
     const executed = await executeBuyerCheckout(executionRequest);
     const order = orderFromCommerceExecution(executed.execution);
     if (!order) {
       throw new Error('AgentGuard allowed checkout but the shared exchange did not return an order.');
+    }
+    if (shouldCollectRazorpayTestPayment(executed.reason_code)) {
+      await collectRazorpayTestPayment({
+        commerceOrderId: order.id,
+        correlationId: request.correlationId,
+        prefill: {
+          name: request.deliveryContext?.name,
+          email: request.deliveryContext?.email,
+          contact: request.deliveryContext?.phone,
+        },
+      });
     }
     if (!executed.receipt) {
       throw new Error('Checkout completed without an Intent Receipt.');

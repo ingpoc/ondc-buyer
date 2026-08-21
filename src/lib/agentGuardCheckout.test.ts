@@ -265,6 +265,44 @@ describe('Buyer AgentGuard controls', () => {
     expect(executeBody.decision_id).toBe('decision-1');
   });
 
+  it('surfaces AWAITING_RAZORPAY_TEST_PAYMENT from a 202 execute without treating it as failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: true,
+              message: 'Order is ready to pay via Razorpay Test Mode.',
+              data: {
+                reason_code: 'AWAITING_RAZORPAY_TEST_PAYMENT',
+                required_action: 'pay',
+                receipt: { receipt_id: 'receipt-pending-1', outcome: 'awaiting_payment' },
+                result: {
+                  order: { order_id: 'commerce-order-1', status: 'payment_pending', landed_total_paise: 17800 },
+                  payment_rail: { rail: 'razorpay_test', key_id: 'rzp_test_x', simulated: false },
+                },
+              },
+            }),
+            { status: 202, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    );
+
+    const executed = await executeBuyerCheckout({
+      quoteId: 'quote-1',
+      decisionId: 'decision-1',
+      correlationId: 'checkout-correlation-1',
+    });
+
+    expect(executed.reason_code).toBe('AWAITING_RAZORPAY_TEST_PAYMENT');
+    expect(executed.required_action).toBe('pay');
+    expect(executed.receipt?.outcome).toBe('awaiting_payment');
+    expect(executed.execution).toMatchObject({
+      order: { order_id: 'commerce-order-1', status: 'payment_pending' },
+    });
+  });
+
   it('preserves a safe inventory conflict message from checkout execution', async () => {
     vi.stubGlobal(
       'fetch',
