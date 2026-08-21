@@ -152,6 +152,8 @@ export async function executeBuyerCheckout(params: {
   }
   const data = await parseData<{
     decision?: string;
+    reason_code?: string;
+    required_action?: string;
     receipt?: { receipt_id: string; outcome: string };
     result?: Record<string, unknown>;
     execution?: Record<string, unknown>;

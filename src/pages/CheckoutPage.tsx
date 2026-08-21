@@ -40,6 +40,11 @@ import {
   type CheckoutPrefillDetail,
 } from '../lib/checkoutPrefill';
 import { customerReference, intentReceiptLabel, sellerDisplayName } from '../lib/displayText';
+import {
+  collectRazorpayTestPayment,
+  fetchRazorpaySandboxStatus,
+  shouldCollectRazorpayTestPayment,
+} from '../lib/razorpayCheckout';
 import { effectiveElevatedTrustState, elevatedTrustSatisfied } from '../lib/trust';
 import type { UCPAddress, UCPItem, UCPQuote, UCPSession } from '../types';
 import { Badge } from '../components/ui/badge';
@@ -105,6 +110,7 @@ interface ExactApprovalReviewProps {
   sellerName: string;
   submitting: boolean;
   approvalAvailable: boolean;
+  razorpayTestMode?: boolean;
   onConfirm: () => void;
   onKeepReviewing: () => void;
 }
@@ -116,6 +122,7 @@ export function ExactApprovalReview({
   sellerName,
   submitting,
   approvalAvailable,
+  razorpayTestMode = false,
   onConfirm,
   onKeepReviewing,
 }: ExactApprovalReviewProps) {
@@ -129,9 +136,11 @@ export function ExactApprovalReview({
         Confirm INR {amountInr.toFixed(2)} for {quantity} × {itemName} from {sellerName}.
       </p>
       <p>
-        Confirming creates the order and reserves this quantity. No bank, card, UPI, wallet, or
-        cash details are collected in this step. This one-time approval cannot be reused for another
-        order.
+        Confirming creates the order and reserves this quantity.{' '}
+        {razorpayTestMode
+          ? 'Razorpay Checkout Test Mode then opens for mock UPI or cards. No real money is collected.'
+          : 'No bank, card, UPI, wallet, or cash details are collected in this step.'}{' '}
+        This one-time approval cannot be reused for another order.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -140,7 +149,13 @@ export function ExactApprovalReview({
           disabled={submitting || !approvalAvailable}
           onClick={onConfirm}
         >
-          {submitting ? 'Placing order...' : 'Confirm exact approval and place order'}
+          {submitting
+            ? razorpayTestMode
+              ? 'Opening Razorpay Test Mode...'
+              : 'Placing order...'
+            : razorpayTestMode
+              ? 'Confirm exact approval and pay in Test Mode'
+              : 'Confirm exact approval and place order'}
         </Button>
         <Button
           type="button"
@@ -294,6 +309,33 @@ export function checkoutActionDisabled({
   return submitting || trustBlocksCheckout || !formReady || !authorizationReady;
 }
 
+export function checkoutPaymentDetailsCopy(razorpayTestMode: boolean): string {
+  return razorpayTestMode
+    ? 'Razorpay Checkout Test Mode. Mock UPI and cards only — no real money.'
+    : 'No bank, card, UPI, wallet, or cash details are collected in this step.';
+}
+
+export function checkoutAuthorizeButtonLabel({
+  trustBlocksCheckout,
+  submitting,
+  prepared,
+  razorpayTestMode,
+}: {
+  trustBlocksCheckout: boolean;
+  submitting: boolean;
+  prepared: boolean;
+  razorpayTestMode: boolean;
+}): string {
+  if (trustBlocksCheckout) return 'Trust verification required';
+  if (submitting) {
+    return razorpayTestMode ? 'Opening Razorpay Test Mode...' : 'Processing...';
+  }
+  if (!prepared) return 'Preview exact landed cost';
+  return razorpayTestMode
+    ? 'Pay with Razorpay Test Mode'
+    : 'Authorize exact total and place order';
+}
+
 function CheckoutSignInLock() {
   const { loginAuth0, loginGoogle } = useAuthContext();
   const authProviders = useAuthProviders();
@@ -392,6 +434,7 @@ export function CheckoutPage() {
   const [mandateBusy, setMandateBusy] = useState(false);
   const [mandateStatus, setMandateStatus] = useState<string | null>(null);
   const [agent, setAgent] = useState<AgentRef | null>(null);
+  const [razorpayTestMode, setRazorpayTestMode] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<UCPAddress>({
     line1: '',
     city: '',
@@ -405,6 +448,16 @@ export function CheckoutPage() {
   useEffect(() => {
     if (itemCount > 0) hadItemsRef.current = true;
   }, [itemCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRazorpaySandboxStatus().then((status) => {
+      if (!cancelled) setRazorpayTestMode(status.configured);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!session || hydratedDeliverySession.current === session.id) return;
@@ -561,6 +614,17 @@ export function CheckoutPage() {
     const order = orderFromCommerceExecution(executed.execution);
     if (!order) {
       throw new Error('AgentGuard allowed checkout but the shared exchange did not return an order.');
+    }
+    if (shouldCollectRazorpayTestPayment(executed.reason_code)) {
+      await collectRazorpayTestPayment({
+        commerceOrderId: order.id,
+        correlationId: request.correlationId,
+        prefill: {
+          name: request.deliveryContext?.name,
+          email: request.deliveryContext?.email,
+          contact: request.deliveryContext?.phone,
+        },
+      });
     }
     if (!executed.receipt) {
       throw new Error('Checkout completed without an Intent Receipt.');
@@ -810,8 +874,19 @@ export function CheckoutPage() {
             ? 'AgentGuard allowed this checkout. The authorization is recorded below.'
             : checkoutOutcome?.decision === 'need_approval' || checkoutOutcome?.decision === 'deny'
               ? 'AgentGuard blocked automatic checkout. Review the decision below.'
-              : 'Confirm buyer details and place the order. AgentGuard authorizes protected checkout.'}
+              : razorpayTestMode
+                ? 'Confirm buyer details, then pay in Razorpay Checkout Test Mode. Mock UPI and cards only — no real money. AgentGuard still authorizes protected checkout.'
+                : 'Confirm buyer details and place the order. AgentGuard authorizes protected checkout.'}
         </p>
+        {razorpayTestMode ? (
+          <Badge
+            variant="outline"
+            className="rounded-full"
+            data-testid="buyer-razorpay-test-mode"
+          >
+            Razorpay Test Mode · no real money
+          </Badge>
+        ) : null}
       </section>
 
       {checkoutOutcome ? (
@@ -857,6 +932,7 @@ export function CheckoutPage() {
                 sellerName={sellerNames.join(', ') || 'the selected seller'}
                 submitting={submitting}
                 approvalAvailable={Boolean(pendingApproval)}
+                razorpayTestMode={razorpayTestMode}
                 onConfirm={() => void handleConfirmExactApproval()}
                 onKeepReviewing={() => {
                   setPendingApproval(null);
@@ -944,8 +1020,9 @@ export function CheckoutPage() {
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
                   <p>
-                    Confirming authorizes the displayed total, creates the order, and reserves the
-                    selected quantity. AgentGuard applies the limit shown beside the order summary.
+                    {razorpayTestMode
+                      ? 'Confirming authorizes the displayed total with AgentGuard, then opens Razorpay Checkout Test Mode. Mock UPI and cards only — no real money.'
+                      : 'Confirming authorizes the displayed total, creates the order, and reserves the selected quantity. AgentGuard applies the limit shown beside the order summary.'}
                   </p>
                   <dl className="grid gap-3 rounded-3xl bg-muted/60 p-4">
                     <div>
@@ -962,7 +1039,7 @@ export function CheckoutPage() {
                     </div>
                     <div>
                       <dt className="font-medium text-foreground">Payment details</dt>
-                      <dd>No bank, card, UPI, wallet, or cash details are collected in this step.</dd>
+                      <dd>{checkoutPaymentDetailsCopy(razorpayTestMode)}</dd>
                     </div>
                   </dl>
                 </CardContent>
@@ -1049,13 +1126,12 @@ export function CheckoutPage() {
               <Card className="border-border/70 bg-card/90">
                 <CardContent className="space-y-4 py-6">
                   <Button type="submit" className="w-full rounded-full" disabled={actionDisabled}>
-                    {trustBlocksCheckout
-                      ? 'Trust verification required'
-                      : submitting
-                        ? 'Processing...'
-                        : preparedCheckout
-                          ? 'Authorize exact total and place order'
-                          : 'Preview exact landed cost'}
+                    {checkoutAuthorizeButtonLabel({
+                      trustBlocksCheckout,
+                      submitting,
+                      prepared: preparedCheckout !== null,
+                      razorpayTestMode,
+                    })}
                   </Button>
 
                   {!actionDisabled ? (

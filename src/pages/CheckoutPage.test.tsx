@@ -1,11 +1,15 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { UCPAddress } from '../types';
 import {
   checkoutActionDisabled,
+  checkoutAuthorizeButtonLabel,
   checkoutFormReady,
   checkoutDecisionStep,
+  checkoutPaymentDetailsCopy,
   collapseDuplicatedRegion,
   DeliveryAddressForm,
   ExactApprovalReview,
@@ -132,6 +136,67 @@ describe('Exact checkout approval', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm exact approval and place order' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onKeepReviewing).not.toHaveBeenCalled();
+  });
+
+  it('names Razorpay Test Mode when sandbox checkout is on', () => {
+    render(
+      <ExactApprovalReview
+        amountInr={178}
+        quantity={1}
+        itemName="Atta"
+        sellerName="Sunrise Foods"
+        submitting={false}
+        approvalAvailable
+        razorpayTestMode
+        onConfirm={() => undefined}
+        onKeepReviewing={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(/Razorpay Checkout Test Mode/i)).toBeVisible();
+    expect(screen.getByText(/no real money/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Confirm exact approval and pay in Test Mode' })).toBeVisible();
+  });
+});
+
+describe('checkout payment rail copy', () => {
+  it('keeps the simulated authorize path when Razorpay sandbox is off', () => {
+    expect(checkoutPaymentDetailsCopy(false)).toMatch(/No bank, card, UPI/i);
+    expect(
+      checkoutAuthorizeButtonLabel({
+        trustBlocksCheckout: false,
+        submitting: false,
+        prepared: true,
+        razorpayTestMode: false,
+      }),
+    ).toBe('Authorize exact total and place order');
+  });
+
+  it('labels Checkout Test Mode and no real money when Razorpay sandbox is on', () => {
+    expect(checkoutPaymentDetailsCopy(true)).toMatch(/Test Mode/i);
+    expect(checkoutPaymentDetailsCopy(true)).toMatch(/no real money/i);
+    expect(
+      checkoutAuthorizeButtonLabel({
+        trustBlocksCheckout: false,
+        submitting: false,
+        prepared: true,
+        razorpayTestMode: true,
+      }),
+    ).toBe('Pay with Razorpay Test Mode');
+  });
+
+  it('collects Razorpay only after AgentGuard execute, on the gateway order-scoped paths', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/CheckoutPage.tsx'), 'utf8');
+    const complete = source.slice(source.indexOf('async function completeAuthorizedCheckout'));
+    const executeAt = complete.indexOf('executeBuyerCheckout(executionRequest)');
+    const collectAt = complete.indexOf('collectRazorpayTestPayment({');
+    expect(executeAt).toBeGreaterThan(-1);
+    expect(collectAt).toBeGreaterThan(executeAt);
+    expect(source).toContain('shouldCollectRazorpayTestPayment(executed.reason_code)');
+    expect(source).not.toMatch(/\/payments\/razorpay\/orders/);
+    expect(source).not.toMatch(/\/payments\/razorpay\/confirm/);
+    expect(source).not.toMatch(/maybeCollectRazorpayTestPayment/);
+    expect(source).not.toMatch(/VITE_COMMERCE_DEMO_MODE/);
   });
 });
 
