@@ -291,9 +291,11 @@ export function ResultsPage(): JSX.Element {
   }
 
   const searchPayload = data as SearchResponse | null;
-  const rawItems = searchPayload?.items ?? [];
   const matchKind = searchPayload?.matchKind;
-  const filtered = useMemo(() => applyBuyerSearchFilters(rawItems, filters), [filters, rawItems]);
+  const filtered = useMemo(
+    () => applyBuyerSearchFilters(searchPayload?.items ?? [], filters),
+    [filters, searchPayload],
+  );
   const items = filtered.items;
 
   if ((loading && !data) || (error && autoRetryRef.current < 3 && !data)) {

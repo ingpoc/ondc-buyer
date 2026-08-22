@@ -91,7 +91,7 @@ export function useApi<T>(
         // already match, paint once — do not wait/dispatch network (that caused
         // TV → spinner → TV when the tool later skipped a second navigate).
         if (!sharedTxn) {
-          const demoQuick = await searchCommerceItems(q || undefined);
+          const demoQuick = await searchCommerceItems(q);
           if (runId !== runIdRef.current) return;
           let presented = resolveBuyerSearchPresentation({
             query: q,
@@ -181,7 +181,7 @@ export function useApi<T>(
           // markers (TV/oil/atta) — otherwise Samantha claims HIT while the grid
           // shows 0 matches.
         }
-        const demo = await searchCommerceItems(q || undefined);
+        const demo = await searchCommerceItems(q);
         if (runId !== runIdRef.current) return;
         let presented = resolveBuyerSearchPresentation({
           query: q,

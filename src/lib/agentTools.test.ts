@@ -48,6 +48,25 @@ vi.mock('./commerceV1Client', () => ({
   prepareDurableCheckout: vi.fn(),
 }));
 
+vi.mock('./buyerBilling', async () => {
+  const { updateLocalBuyer } = await import('./localCart');
+  return {
+    persistBuyerBilling: vi.fn(async (sessionId: string, buyer: {
+      name: string;
+      email: string;
+      phone: string;
+      taxId?: string;
+    }) => {
+      updateLocalBuyer(sessionId, buyer);
+      return {
+        ok: true,
+        persisted: 'local',
+        warning: 'Billing saved on this device. Gateway /api/commerce/v1/buyer returned 404.',
+      };
+    }),
+  };
+});
+
 vi.mock('./samanthaMemory', () => ({
   loadSamanthaMemory: vi.fn(() => ({
     likes: [], dislikes: [], preferences: [], notes: [], updatedAt: '2026-07-17T00:00:00Z',

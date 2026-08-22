@@ -68,6 +68,8 @@ export function BillingForm({ session, onSave, onDraftChange }: BillingFormProps
     setEmail((prev) => prev || next.email);
     setPhone((prev) => prev || next.phone);
     setTaxId((prev) => prev || next.taxId);
+    // Field keys only — full `session` identity changes on cart refresh and must not wipe typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, session?.buyer?.name, session?.buyer?.email, session?.buyer?.phone, session?.buyer?.taxId]);
 
   const handleSave = useCallback(async () => {

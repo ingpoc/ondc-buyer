@@ -14,12 +14,21 @@ function response(status: number) {
   });
 }
 
-const session = {
+const emptySession = {
   id: 'session-billing',
   buyer: {
     name: '',
     email: '',
     phone: '',
+  },
+};
+
+const seededSession = {
+  id: 'session-billing',
+  buyer: {
+    name: 'Buyer One',
+    email: 'buyer@example.test',
+    phone: '+919876543210',
   },
 };
 
@@ -37,7 +46,7 @@ describe('BillingForm', () => {
   });
 
   it('surfaces a missing session before live billing save', async () => {
-    render(<BillingForm session={session} />);
+    render(<BillingForm session={seededSession} />);
 
     fireEvent.change(screen.getByLabelText('Full name *'), {
       target: { value: 'Buyer Two' },
@@ -56,7 +65,7 @@ describe('BillingForm', () => {
     const onDraftChange = vi.fn();
 
     const { rerender } = render(
-      <BillingForm session={session} onDraftChange={onDraftChange} />,
+      <BillingForm session={emptySession} onDraftChange={onDraftChange} />,
     );
 
     fireEvent.change(screen.getByLabelText('Full name *'), {
