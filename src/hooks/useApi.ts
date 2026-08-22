@@ -5,6 +5,7 @@ import {
   lookupBuyerCatalogItem,
   rememberBuyerCatalogItems,
   rememberOndcCatalogItems,
+  resolveBuyerSearchPresentation,
 } from '../lib/buyerCatalogCache';
 import { resolveMockBuyerEndpoint } from '../lib/mockSearch';
 import { getCommerceItem, searchCommerceItems } from '../lib/commerceClient';
@@ -90,14 +91,29 @@ export function useApi<T>(
         // already match, paint once — do not wait/dispatch network (that caused
         // TV → spinner → TV when the tool later skipped a second navigate).
         if (!sharedTxn) {
-          const demoQuick = await searchCommerceItems(q);
+          const demoQuick = await searchCommerceItems(q || undefined);
           if (runId !== runIdRef.current) return;
-          const demoQuickItems = filterBuyerSearchResults(demoQuick.items ?? [], q, category);
-          if (demoQuickItems.length > 0) {
-            rememberBuyerCatalogItems(demoQuickItems);
+          let presented = resolveBuyerSearchPresentation({
+            query: q,
+            category,
+            fetchedItems: demoQuick.items ?? [],
+          });
+          if (q.trim() && presented.items.length === 0) {
+            const browse = await searchCommerceItems(undefined);
+            if (runId !== runIdRef.current) return;
+            presented = resolveBuyerSearchPresentation({
+              query: q,
+              category,
+              fetchedItems: demoQuick.items ?? [],
+              browseItems: browse.items ?? [],
+            });
+          }
+          if (presented.items.length > 0) {
+            rememberBuyerCatalogItems(presented.items);
             setData({
-              items: demoQuickItems,
-              totalCount: demoQuickItems.length,
+              items: presented.items,
+              totalCount: presented.items.length,
+              matchKind: presented.matchKind,
               __source: 'demo-commerce',
             } as T);
             return;
@@ -165,13 +181,28 @@ export function useApi<T>(
           // markers (TV/oil/atta) — otherwise Samantha claims HIT while the grid
           // shows 0 matches.
         }
-        const demo = await searchCommerceItems(q);
+        const demo = await searchCommerceItems(q || undefined);
         if (runId !== runIdRef.current) return;
-        const demoItems = filterBuyerSearchResults(demo.items ?? [], q, category);
-        rememberBuyerCatalogItems(demoItems);
+        let presented = resolveBuyerSearchPresentation({
+          query: q,
+          category,
+          fetchedItems: demo.items ?? [],
+        });
+        if (q.trim() && presented.items.length === 0) {
+          const browse = await searchCommerceItems(undefined);
+          if (runId !== runIdRef.current) return;
+          presented = resolveBuyerSearchPresentation({
+            query: q,
+            category,
+            fetchedItems: demo.items ?? [],
+            browseItems: browse.items ?? [],
+          });
+        }
+        rememberBuyerCatalogItems(presented.items);
         setData({
-          items: demoItems,
-          totalCount: demoItems.length,
+          items: presented.items,
+          totalCount: presented.items.length,
+          matchKind: presented.matchKind,
           __source: 'demo-commerce',
         } as T);
         return;

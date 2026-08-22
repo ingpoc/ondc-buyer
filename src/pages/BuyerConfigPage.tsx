@@ -31,9 +31,8 @@ import {
   saveSamanthaMemory,
   type SamanthaMemory,
 } from '../lib/samanthaMemory';
-import { updateLocalBuyer, updateLocalDeliveryAddress } from '../lib/localCart';
-import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
-import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
+import { updateLocalDeliveryAddress } from '../lib/localCart';
+import { persistBuyerBilling } from '../lib/buyerBilling';
 import {
   loadSavedDeliveryArea,
   saveDeliveryAreaFromAddress,
@@ -289,20 +288,7 @@ export function BuyerConfigPage() {
         phone: profilePhone.trim(),
         taxId: profileTaxId.trim().toUpperCase() || undefined,
       };
-      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
-        updateLocalBuyer(sessionId, billing);
-      } else {
-        const response = await fetch(buildCommerceUrl(`/api/cart/buyer/${sessionId}`), {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(billing),
-        });
-        if (!response.ok) {
-          throw new Error(`Could not save billing (HTTP ${response.status}).`);
-        }
-        // Keep local GSTIN + billing mirror for checkout forms even when API owns cart.
-        updateLocalBuyer(sessionId, billing);
-      }
+      const persist = await persistBuyerBilling(sessionId, billing);
       if (profileLine1.trim() || profileCity.trim() || profileState.trim() || profilePin.trim()) {
         if (!profileLine1.trim() || !profileCity.trim() || !profileState.trim() || !profilePin.trim()) {
           throw new Error('Delivery needs street, city, state, and PIN together.');
@@ -318,7 +304,7 @@ export function BuyerConfigPage() {
         saveDeliveryAreaFromAddress(subjectId, address);
       }
       await refreshCart();
-      setProfileNote('Profile saved for checkout.');
+      setProfileNote(persist.warning || 'Profile saved for checkout.');
     } catch (err) {
       setProfileNote(err instanceof Error ? err.message : 'Save failed');
     } finally {

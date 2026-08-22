@@ -22,14 +22,12 @@ import {
 } from './commerceClient';
 import { evaluateBuyerCheckout, executeBuyerCheckout } from './agentGuardCheckout';
 import { prepareDurableCheckout } from './commerceV1Client';
+import { persistBuyerBilling } from './buyerBilling';
 import { writeCheckoutOutcome } from './checkoutOutcome';
-import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from './commerceConfig';
-import { shouldUseLocalCartFallback } from './cartFailurePolicy';
 import { dispatchCheckoutPrefill } from './checkoutPrefill';
 import {
   clearLocalSession,
   getLocalSession,
-  updateLocalBuyer,
   updateLocalDeliveryAddress,
 } from './localCart';
 import {
@@ -1059,22 +1057,7 @@ export async function runBuyerTool(
             navigateTo: '/checkout',
           };
         }
-        updateLocalBuyer(sessionId, merged);
-        if (!shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
-          const response = await fetch(buildCommerceUrl(`/api/cart/buyer/${sessionId}`), {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(merged),
-          });
-          if (!response.ok) {
-            return {
-              ok: false,
-              tool: name,
-              message: `Could not save billing (HTTP ${response.status}).`,
-              navigateTo: '/checkout',
-            };
-          }
-        }
+        await persistBuyerBilling(sessionId, merged);
       }
       if (hasDelivery) {
         const address: UCPAddress = {

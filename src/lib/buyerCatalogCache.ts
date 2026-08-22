@@ -126,6 +126,43 @@ export function filterBuyerSearchResults(
   return filterBuyerItemsForCategory(filterBuyerItemsForQuery(items, query), category);
 }
 
+export type BuyerSearchMatchKind = 'exact' | 'similar' | 'browse';
+
+export interface BuyerSearchPresentation {
+  items: UCPItem[];
+  matchKind: BuyerSearchMatchKind;
+}
+
+/**
+ * Exact title/token hits stay exact. If the API is exact-match-empty or the
+ * client filter would drop a broader grocery payload, surface those real SKUs
+ * as similar — never invent items.
+ */
+export function resolveBuyerSearchPresentation(params: {
+  query: string;
+  category: string;
+  fetchedItems: UCPItem[];
+  browseItems?: UCPItem[];
+}): BuyerSearchPresentation {
+  const query = params.query.trim();
+  const categorized = filterBuyerItemsForCategory(params.fetchedItems, params.category);
+  if (!query) {
+    return { items: categorized, matchKind: 'browse' };
+  }
+
+  const exact = filterBuyerItemsForQuery(categorized, query);
+  if (exact.length) {
+    return { items: exact, matchKind: 'exact' };
+  }
+
+  if (categorized.length) {
+    return { items: categorized, matchKind: 'similar' };
+  }
+
+  const browse = filterBuyerItemsForCategory(params.browseItems ?? [], params.category);
+  return { items: browse, matchKind: browse.length ? 'similar' : 'exact' };
+}
+
 export function mapOndcCatalogItemToBuyerItem(item: OndcCatalogItem): UCPItem {
   const name = String(item.name || item.id || 'ONDC item');
   const id = String(item.id || `${item.bpp_id || 'bpp'}-${name}`);

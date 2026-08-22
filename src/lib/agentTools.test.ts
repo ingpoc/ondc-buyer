@@ -438,6 +438,37 @@ describe('buyer agent tools cart path', () => {
     expect(buyer?.pincode).toBe('411001');
   });
 
+  it('fill_checkout keeps billing when CommerceV1 buyer persist 404s', async () => {
+    const sessionId = 'session-fill-404';
+    localStorage.setItem('ondc-session-id', sessionId);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ detail: 'Not Found' }),
+      })),
+    );
+    const result = await runBuyerTool(
+      'fill_checkout',
+      {
+        session_id: sessionId,
+        name: 'Gurusharan Gupta',
+        email: 'buyer@example.com',
+        phone: '+919876543210',
+        line1: '42 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postal_code: '411001',
+      },
+      { subjectId: 'principal:demo:test' },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.message).not.toMatch(/HTTP 404/);
+    const { getLocalSession } = await import('./localCart');
+    expect(getLocalSession(sessionId).buyer?.email).toBe('buyer@example.com');
+  });
+
   it('checkout_commit prepares an exact durable quote before AgentGuard review', async () => {
     const sessionId = 'session-checkout-address';
     localStorage.setItem('ondc-session-id', sessionId);
