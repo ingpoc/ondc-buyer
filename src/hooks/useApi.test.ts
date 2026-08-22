@@ -59,20 +59,32 @@ describe('useApi local search dependency boundary', () => {
 
   it('returns the local shared catalog without waiting for external network search', async () => {
     const networkReady = vi.spyOn(protocolClient, 'isOndcNetworkSearchReady').mockResolvedValue(true);
-    const localSearch = vi.spyOn(commerceClient, 'searchCommerceItems').mockResolvedValue({
-      items: [],
-      totalCount: 0,
-      __source: 'api',
+    const atta: UCPItem = {
+      id: 'sampoorna-atta',
+      name: 'Sampoorna Whole Wheat Atta 1kg',
+      category: 'Grocery',
+      price: { currency: 'INR', value: '89.00' },
+      images: [],
+    };
+    const localSearch = vi.spyOn(commerceClient, 'searchCommerceItems').mockImplementation(async (query?: string) => {
+      if (query) return { items: [], totalCount: 0, __source: 'api' };
+      return { items: [atta], totalCount: 1, __source: 'api' };
     });
 
-    const { result } = renderHook(() => useApi<{ items: UCPItem[]; totalCount: number }>('/api/search?category=grocery&q=rice'));
+    const { result } = renderHook(() =>
+      useApi<{ items: UCPItem[]; totalCount: number; matchKind?: string }>(
+        '/api/search?category=grocery&q=rice',
+      ),
+    );
     await act(async () => {
       await result.current.execute();
     });
 
     expect(networkReady).not.toHaveBeenCalled();
     expect(localSearch).toHaveBeenCalledWith('rice');
+    expect(localSearch).toHaveBeenCalledWith(undefined);
     expect(result.current.error).toBeNull();
-    expect(result.current.data?.items).toEqual([]);
+    expect(result.current.data?.matchKind).toBe('similar');
+    expect(result.current.data?.items).toEqual([atta]);
   });
 });

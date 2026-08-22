@@ -29,9 +29,21 @@ import {
 } from './components/ui/sheet';
 import { effectiveElevatedTrustState, type PortfolioTrustState } from './lib/trust';
 import { cn } from './lib/utils';
-import { useAuthContext } from './contexts/AuthContext';
+import { useAuthContext, type SSOUser } from './contexts/AuthContext';
 import { useAuthProviders } from './lib/authProviders';
 import { COMMERCE_EXCHANGE_LABEL } from './lib/commerceConfig';
+
+export function buyerAccountIdentity(user: SSOUser | null | undefined): {
+  primary: string;
+  secondary?: string;
+} {
+  const name = user?.display_name?.trim() || '';
+  const email = user?.email?.trim() || '';
+  if (name && email && name !== email) return { primary: name, secondary: email };
+  if (name) return { primary: name };
+  if (email) return { primary: email };
+  return { primary: 'Signed in' };
+}
 
 const IDENTITY_AUTH_ENABLED = import.meta.env.VITE_IDENTITY_AUTH_ENABLED === 'true';
 
@@ -329,6 +341,8 @@ function AccountMenu({
   onLogout: () => void;
   onNavigate?: () => void;
 }) {
+  const { user } = useAuthContext();
+  const identity = buyerAccountIdentity(user);
   const { trustMeta, runtimeMeta } = useBuyerHeaderAuthority();
   const TrustIcon = trustMeta.icon;
   const panelId = 'buyer-account-menu';
@@ -361,6 +375,15 @@ function AccountMenu({
         >
           <div className="space-y-2 border-b border-border/60 pb-3 text-sm">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Signed in as
+            </p>
+            <div data-testid="buyer-account-identity" className="px-0.5">
+              <p className="font-medium">{identity.primary}</p>
+              {identity.secondary ? (
+                <p className="text-xs text-muted-foreground">{identity.secondary}</p>
+              ) : null}
+            </div>
+            <p className="pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Trust
             </p>
             <div className="flex items-start gap-2 text-foreground">
@@ -419,13 +442,21 @@ function AccountPanelCompact({
   onLogout: () => void;
   onNavigate: () => void;
 }) {
+  const { user } = useAuthContext();
+  const identity = buyerAccountIdentity(user);
   const { trustMeta, runtimeMeta } = useBuyerHeaderAuthority();
   const TrustIcon = trustMeta.icon;
 
   return (
     <div className="flex flex-col gap-3 border-t border-border/60 pt-3">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Account</p>
-      <div className="space-y-2 text-sm">
+      <div className="space-y-2 text-sm" data-testid="buyer-account-identity">
+        <div>
+          <p className="font-medium">{identity.primary}</p>
+          {identity.secondary ? (
+            <p className="text-xs text-muted-foreground">{identity.secondary}</p>
+          ) : null}
+        </div>
         <div className="flex items-start gap-2">
           <TrustIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
           <div>

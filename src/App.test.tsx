@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buyerAccountIdentity,
   getHeaderTrustMeta,
   getTrustMeta,
   headerRuntimeIsHealthy,
@@ -30,6 +31,19 @@ describe('Buyer header disclosure helpers', () => {
     expect(headerRuntimeIsHealthy('Ready')).toBe(true);
     expect(headerRuntimeIsHealthy('Unavailable')).toBe(false);
     expect(headerRuntimeIsHealthy('Checking')).toBe(false);
+  });
+
+  it('shows signed-in email or name instead of only TRUST/ASSISTANT', () => {
+    expect(buyerAccountIdentity({ email: 'buyer@example.test' })).toEqual({
+      primary: 'buyer@example.test',
+    });
+    expect(
+      buyerAccountIdentity({ display_name: 'Gurusharan Gupta', email: 'buyer@example.test' }),
+    ).toEqual({
+      primary: 'Gurusharan Gupta',
+      secondary: 'buyer@example.test',
+    });
+    expect(buyerAccountIdentity(null)).toEqual({ primary: 'Signed in' });
   });
 
   it('exposes loading trust copy without marking it healthy', () => {

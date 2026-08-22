@@ -17,6 +17,7 @@ import {
   shouldFallbackLocalOnCartError,
   shouldUseLocalCartFallback,
 } from '../lib/cartFailurePolicy';
+import { throwIfSpaHtml } from '../lib/gatewayResponse';
 
 const USE_LOCAL_CART = shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE);
 
@@ -68,6 +69,7 @@ async function cartRequest(
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
+  throwIfSpaHtml(response, 'Cart request');
 
   return response.json();
 }

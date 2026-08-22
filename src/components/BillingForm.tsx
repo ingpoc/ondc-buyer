@@ -9,39 +9,68 @@ import {
   FieldLabel,
 } from './ui/field';
 import { Input } from './ui/input';
-import { buildCommerceUrl, COMMERCE_API_BASE, COMMERCE_DEMO_MODE } from '../lib/commerceConfig';
-import { updateLocalBuyer } from '../lib/localCart';
-import { shouldUseLocalCartFallback } from '../lib/cartFailurePolicy';
+import { persistBuyerBilling, type BuyerBilling } from '../lib/buyerBilling';
 
 const STORAGE_KEY = 'ondc-session-id';
+
+export interface BillingDraft {
+  name: string;
+  email: string;
+  phone: string;
+  taxId: string;
+}
 
 export interface BillingFormProps {
   session: any;
   onSave?: () => void | Promise<void>;
+  onDraftChange?: (draft: BillingDraft) => void;
 }
 
 export function formatBillingSaveError(error: unknown): string {
   return error instanceof Error ? error.message : 'Billing save failed.';
 }
 
-export function BillingForm({ session, onSave }: BillingFormProps): React.ReactElement {
+function buyerDraftFromSession(session: any): BillingDraft {
+  return {
+    name: session?.buyer?.name || '',
+    email: session?.buyer?.email || session?.buyer?.contact?.email || '',
+    phone: session?.buyer?.phone || session?.buyer?.contact?.phone || '',
+    taxId: session?.buyer?.taxId || '',
+  };
+}
+
+export function BillingForm({ session, onSave, onDraftChange }: BillingFormProps): React.ReactElement {
   const fieldPrefix = useId();
-  const [name, setName] = useState(session?.buyer?.name || '');
-  const [email, setEmail] = useState(session?.buyer?.email || '');
-  const [phone, setPhone] = useState(session?.buyer?.phone || '');
-  const [taxId, setTaxId] = useState(session?.buyer?.taxId || '');
+  const seeded = buyerDraftFromSession(session);
+  const [name, setName] = useState(seeded.name);
+  const [email, setEmail] = useState(seeded.email);
+  const [phone, setPhone] = useState(seeded.phone);
+  const [taxId, setTaxId] = useState(seeded.taxId);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
+
+  const emitDraft = useCallback(
+    (draft: BillingDraft) => {
+      onDraftChange?.(draft);
+    },
+    [onDraftChange],
+  );
 
   useEffect(() => {
-    if (session?.buyer) {
-      setName(session.buyer.name || '');
-      setEmail(session.buyer.email || '');
-      setPhone(session.buyer.phone || '');
-      setTaxId(session.buyer.taxId || '');
-    }
-  }, [session]);
+    emitDraft({ name, email, phone, taxId });
+  }, [email, emitDraft, name, phone, taxId]);
+
+  useEffect(() => {
+    const next = buyerDraftFromSession(session);
+    setName((prev) => prev || next.name);
+    setEmail((prev) => prev || next.email);
+    setPhone((prev) => prev || next.phone);
+    setTaxId((prev) => prev || next.taxId);
+    // Field keys only — full `session` identity changes on cart refresh and must not wipe typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, session?.buyer?.name, session?.buyer?.email, session?.buyer?.phone, session?.buyer?.taxId]);
 
   const handleSave = useCallback(async () => {
     if (!name.trim() || !email.trim() || !phone.trim()) {
@@ -51,6 +80,7 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
     setSaving(true);
     setSaved(false);
     setSaveError(null);
+    setSaveWarning(null);
     const sessionId = localStorage.getItem(STORAGE_KEY);
 
     try {
@@ -58,26 +88,14 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
         throw new Error('No session found');
       }
 
-      if (shouldUseLocalCartFallback(COMMERCE_DEMO_MODE, COMMERCE_API_BASE)) {
-        updateLocalBuyer(sessionId, { name, email, phone, taxId });
+      const billing: BuyerBilling = { name, email, phone, taxId };
+      const result = await persistBuyerBilling(sessionId, billing);
+      if (result.warning) {
+        setSaveWarning(result.warning);
+      } else {
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
-        await onSave?.();
-        return;
       }
-
-      const response = await fetch(buildCommerceUrl(`/api/cart/buyer/${sessionId}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, taxId }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Billing save failed: ${response.status}`);
-      }
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
       await onSave?.();
     } catch (error) {
       setSaveError(formatBillingSaveError(error));
@@ -89,8 +107,8 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
   const isDirty = useMemo(
     () =>
       name !== (session?.buyer?.name || '') ||
-      email !== (session?.buyer?.email || '') ||
-      phone !== (session?.buyer?.phone || '') ||
+      email !== (session?.buyer?.email || session?.buyer?.contact?.email || '') ||
+      phone !== (session?.buyer?.phone || session?.buyer?.contact?.phone || '') ||
       taxId !== (session?.buyer?.taxId || ''),
     [email, name, phone, session, taxId],
   );
@@ -124,6 +142,15 @@ export function BillingForm({ session, onSave }: BillingFormProps): React.ReactE
         {saved ? (
           <Badge variant="secondary" className="rounded-full bg-primary/15 text-primary">
             Information saved
+          </Badge>
+        ) : null}
+        {saveWarning ? (
+          <Badge
+            variant="secondary"
+            className="rounded-full bg-amber-100 text-amber-900"
+            data-testid="buyer-billing-save-warning"
+          >
+            {saveWarning}
           </Badge>
         ) : null}
         {saveError ? (

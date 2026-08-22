@@ -48,6 +48,25 @@ vi.mock('./commerceV1Client', () => ({
   prepareDurableCheckout: vi.fn(),
 }));
 
+vi.mock('./buyerBilling', async () => {
+  const { updateLocalBuyer } = await import('./localCart');
+  return {
+    persistBuyerBilling: vi.fn(async (sessionId: string, buyer: {
+      name: string;
+      email: string;
+      phone: string;
+      taxId?: string;
+    }) => {
+      updateLocalBuyer(sessionId, buyer);
+      return {
+        ok: true,
+        persisted: 'local',
+        warning: 'Billing saved on this device. Gateway /api/cart/buyer/{sessionId} returned 404.',
+      };
+    }),
+  };
+});
+
 vi.mock('./samanthaMemory', () => ({
   loadSamanthaMemory: vi.fn(() => ({
     likes: [], dislikes: [], preferences: [], notes: [], updatedAt: '2026-07-17T00:00:00Z',
@@ -436,6 +455,37 @@ describe('buyer agent tools cart path', () => {
     expect(buyer?.street).toBe('42 Market Road');
     expect(buyer?.city).toBe('Pune');
     expect(buyer?.pincode).toBe('411001');
+  });
+
+  it('fill_checkout keeps billing when cart-session persist 404s', async () => {
+    const sessionId = 'session-fill-404';
+    localStorage.setItem('ondc-session-id', sessionId);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ detail: 'Not Found' }),
+      })),
+    );
+    const result = await runBuyerTool(
+      'fill_checkout',
+      {
+        session_id: sessionId,
+        name: 'Gurusharan Gupta',
+        email: 'buyer@example.com',
+        phone: '+919876543210',
+        line1: '42 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postal_code: '411001',
+      },
+      { subjectId: 'principal:demo:test' },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.message).not.toMatch(/HTTP 404/);
+    const { getLocalSession } = await import('./localCart');
+    expect(getLocalSession(sessionId).buyer?.email).toBe('buyer@example.com');
   });
 
   it('checkout_commit prepares an exact durable quote before AgentGuard review', async () => {

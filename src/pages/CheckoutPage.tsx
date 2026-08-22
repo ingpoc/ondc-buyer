@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BillingForm } from '../components/BillingForm';
+import { BillingForm, type BillingDraft } from '../components/BillingForm';
 import { QuoteDisplay } from '../components/QuoteDisplay';
 import { TrustNotice } from '../components/TrustStatus';
 import { useCart, useSubject, useTrustState } from '../hooks';
@@ -260,11 +260,16 @@ export function DeliveryAddressForm({ address, onChange, onPersist }: DeliveryAd
 export function checkoutFormReady(
   session: Pick<UCPSession, 'buyer'> | null,
   address: UCPAddress,
+  draft?: Partial<BillingDraft> | null,
 ): boolean {
   const buyer = session?.buyer;
+  const name = (draft?.name ?? buyer?.name ?? '').trim();
+  const email = (draft?.email ?? buyer?.contact?.email ?? buyer?.email ?? '').trim();
+  const phone = (draft?.phone ?? buyer?.contact?.phone ?? buyer?.phone ?? '').trim();
   return Boolean(
-    buyer?.name?.trim() &&
-      (buyer.contact?.email || buyer.email)?.trim() &&
+    name &&
+      email &&
+      phone &&
       address.line1?.trim() &&
       address.city?.trim() &&
       address.state?.trim() &&
@@ -416,7 +421,7 @@ function CartSummary({ currency, formReady }: { currency: string; formReady: boo
 
 export function CheckoutPage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, user } = useAuthContext();
   const { walletAddress, subjectId, principalId } = useSubject();
   const { session, loading, error, itemCount, refreshCart, clearCart } = useCart();
   const trust = useTrustState(walletAddress);
@@ -441,6 +446,12 @@ export function CheckoutPage() {
     state: '',
     postalCode: '',
     country: 'IND',
+  });
+  const [billingDraft, setBillingDraft] = useState<BillingDraft>({
+    name: '',
+    email: '',
+    phone: '',
+    taxId: '',
   });
   const hydratedDeliverySession = useRef<string | null>(null);
   const hadItemsRef = useRef(false);
@@ -511,6 +522,12 @@ export function CheckoutPage() {
           saveDeliveryAreaFromAddress(subjectId || principalId, next);
           return next;
         });
+        setBillingDraft((prev) => ({
+          name: detail.name ?? prev.name,
+          email: detail.email ?? prev.email,
+          phone: detail.phone ?? prev.phone,
+          taxId: detail.taxId ?? prev.taxId,
+        }));
       void refreshCart();
     };
     window.addEventListener(CHECKOUT_PREFILL_EVENT, onPrefill);
@@ -714,9 +731,20 @@ export function CheckoutPage() {
       const prepared = preparedCheckout;
       const amountInr = prepared.quote.landed_total_paise / 100;
       const deliveryContext = {
-        name: session.buyer?.name?.trim() || '',
-        email: (session.buyer?.contact?.email || session.buyer?.email || '').trim(),
-        phone: (session.buyer?.contact?.phone || session.buyer?.phone || '').trim(),
+        name: billingDraft.name.trim() || session.buyer?.name?.trim() || user?.display_name?.trim() || '',
+        email: (
+          billingDraft.email ||
+          session.buyer?.contact?.email ||
+          session.buyer?.email ||
+          user?.email ||
+          ''
+        ).trim(),
+        phone: (
+          billingDraft.phone ||
+          session.buyer?.contact?.phone ||
+          session.buyer?.phone ||
+          ''
+        ).trim(),
         line1: deliveryAddress.line1?.trim() || '',
         line2: deliveryAddress.line2?.trim() || '',
         city: deliveryAddress.city?.trim() || '',
@@ -836,7 +864,7 @@ export function CheckoutPage() {
   const currency = session?.items[0]?.item.price?.currency || 'INR';
   const shoppingLimitDirty =
     savedCheckoutAutoMax !== null && checkoutAutoMax !== savedCheckoutAutoMax;
-  const formReady = checkoutFormReady(session, deliveryAddress);
+  const formReady = checkoutFormReady(session, deliveryAddress, billingDraft);
   const mandateReady =
     mandateStatus === 'active' && savedCheckoutAutoMax !== null && !shoppingLimitDirty;
   const mandateRequired = preparedCheckout !== null && !mandateReady;
@@ -1005,7 +1033,19 @@ export function CheckoutPage() {
         <form onSubmit={handleSubmit}>
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <div className="space-y-6">
-              <BillingForm session={session} onSave={refreshCart} />
+              <BillingForm
+                session={{
+                  ...session,
+                  buyer: {
+                    ...session?.buyer,
+                    name: billingDraft.name || session?.buyer?.name || user?.display_name || '',
+                    email: billingDraft.email || session?.buyer?.email || user?.email || '',
+                    phone: billingDraft.phone || session?.buyer?.phone || '',
+                    taxId: billingDraft.taxId || session?.buyer?.taxId || '',
+                  },
+                }}
+                onDraftChange={setBillingDraft}
+              />
               <DeliveryAddressForm
                 address={deliveryAddress}
                 onChange={handleDeliveryAddressChange}

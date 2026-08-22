@@ -5,6 +5,7 @@ import {
   filterBuyerItemsForQuery,
   filterBuyerSearchResults,
   mapOndcCatalogItemToBuyerItem,
+  resolveBuyerSearchPresentation,
 } from './buyerCatalogCache';
 
 const atta: UCPItem = {
@@ -69,6 +70,32 @@ describe('filterBuyerItemsForQuery', () => {
     expect(filterBuyerItemsForQuery([poha, atta], 'rice')).toEqual([]);
     expect(filterBuyerItemsForQuery([poha, atta], 'poha')).toEqual([poha]);
     expect(filterBuyerItemsForQuery([poha], 'flattened rice')).toEqual([poha]);
+  });
+
+  it('presents browse groceries as similar when rice has no exact title match', () => {
+    expect(resolveBuyerSearchPresentation({
+      query: 'rice',
+      category: 'grocery',
+      fetchedItems: [],
+      browseItems: [atta, oil],
+    })).toEqual({ items: [atta, oil], matchKind: 'similar' });
+  });
+
+  it('does not drop a broader API payload that failed exact title match', () => {
+    expect(resolveBuyerSearchPresentation({
+      query: 'rice',
+      category: 'grocery',
+      fetchedItems: [atta, oil],
+    })).toEqual({ items: [atta, oil], matchKind: 'similar' });
+  });
+
+  it('keeps an empty exact state when neither the query nor browse returned SKUs', () => {
+    expect(resolveBuyerSearchPresentation({
+      query: 'rice',
+      category: 'grocery',
+      fetchedItems: [],
+      browseItems: [],
+    })).toEqual({ items: [], matchKind: 'exact' });
   });
 
   it('preserves delivery areas from a network-shaped catalog item', () => {

@@ -5,6 +5,7 @@ import {
   applyBuyerSearchFilters,
   filtersFromSearchParams,
   ResultsPage,
+  resultsOfferHeading,
   searchParamsWithFilters,
 } from './ResultsPage';
 
@@ -21,6 +22,12 @@ vi.mock('../hooks', () => ({
 }));
 
 describe('ResultsPage zero-result recovery', () => {
+  it('labels similar browse fallback separately from an exact match or empty dead-end', () => {
+    expect(resultsOfferHeading('rice', 2, 'similar')).toBe('No exact match, similar items');
+    expect(resultsOfferHeading('rice', 0, 'exact')).toBe('No exact matches for “rice”');
+    expect(resultsOfferHeading('rice', 2, 'exact')).toBe('Compare the strongest candidates');
+  });
+
   it('offers an immediate browse action without presenting an unrelated product as a match', () => {
     render(
       <MemoryRouter initialEntries={['/results?category=grocery&q=rice']}>

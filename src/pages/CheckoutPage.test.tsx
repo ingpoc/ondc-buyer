@@ -77,6 +77,17 @@ describe('checkout form readiness', () => {
     expect(checkoutFormReady(session, completeAddress)).toBe(true);
     expect(checkoutFormReady(session, { ...completeAddress, postalCode: '4110' })).toBe(false);
     expect(checkoutFormReady({ buyer: { ...session.buyer, name: '' } }, completeAddress)).toBe(false);
+    expect(checkoutFormReady({ buyer: { ...session.buyer, phone: '' } }, completeAddress)).toBe(false);
+  });
+
+  it('enables preview from local billing draft even when session.buyer is empty', () => {
+    expect(
+      checkoutFormReady({ buyer: { name: '', email: '', phone: '' } }, completeAddress, {
+        name: 'Gurusharan Gupta',
+        email: 'buyer@example.com',
+        phone: '+919876543210',
+      }),
+    ).toBe(true);
   });
 
   it('keeps exact authorization disabled until the shopping mandate is saved', () => {

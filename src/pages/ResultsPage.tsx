@@ -24,6 +24,18 @@ import { Spinner } from '../components/ui/spinner';
 interface SearchResponse {
   items: UCPItem[];
   totalCount: number;
+  matchKind?: 'exact' | 'similar' | 'browse';
+}
+
+export function resultsOfferHeading(
+  query: string,
+  itemCount: number,
+  matchKind?: SearchResponse['matchKind'],
+): string {
+  if (matchKind === 'similar' && itemCount > 0) return 'No exact match, similar items';
+  if (itemCount > 1) return 'Compare the strongest candidates';
+  if (itemCount === 1) return 'Review the available offer';
+  return query ? `No exact matches for “${query}”` : 'Nothing surfaced yet';
 }
 
 function countActiveFilters(filters: SearchFilters) {
@@ -278,8 +290,12 @@ export function ResultsPage(): JSX.Element {
     }
   }
 
-  const rawItems = (data as SearchResponse | null)?.items ?? [];
-  const filtered = useMemo(() => applyBuyerSearchFilters(rawItems, filters), [filters, rawItems]);
+  const searchPayload = data as SearchResponse | null;
+  const matchKind = searchPayload?.matchKind;
+  const filtered = useMemo(
+    () => applyBuyerSearchFilters(searchPayload?.items ?? [], filters),
+    [filters, searchPayload],
+  );
   const items = filtered.items;
 
   if ((loading && !data) || (error && autoRetryRef.current < 3 && !data)) {
@@ -334,11 +350,13 @@ export function ResultsPage(): JSX.Element {
               Browse {resultLabel}
             </h1>
             <p className="max-w-[55ch] text-base leading-relaxed text-muted-foreground">
-              {items.length > 1
-                ? 'Refine search, compare offers, and move the best candidate into cart.'
-                : items.length === 1
-                  ? 'Review this offer, seller, delivery, and return terms before adding it to cart.'
-                  : 'Adjust the search or filters to find an available offer.'}
+              {matchKind === 'similar' && items.length
+                ? `No exact match for “${query}”. Showing similar groceries currently available.`
+                : items.length > 1
+                  ? 'Refine search, compare offers, and move the best candidate into cart.'
+                  : items.length === 1
+                    ? 'Review this offer, seller, delivery, and return terms before adding it to cart.'
+                    : 'Adjust the search or filters to find an available offer.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -387,19 +405,15 @@ export function ResultsPage(): JSX.Element {
                   Offer grid
                 </div>
                 <CardTitle className="text-2xl">
-                  {items.length > 1
-                    ? 'Compare the strongest candidates'
-                    : items.length === 1
-                      ? 'Review the available offer'
-                    : query
-                      ? `No exact matches for “${query}”`
-                      : 'Nothing surfaced yet'}
+                  {resultsOfferHeading(query, items.length, matchKind)}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {items.length
-                    ? items.length === 1
-                      ? 'Only one verified seller offer is currently available. Review its terms before adding it to cart.'
-                      : 'Open product detail for deeper inspection or add an item directly to cart.'
+                  {matchKind === 'similar' && items.length
+                    ? 'These are published grocery SKUs, not invented matches. Open a listing or try another search.'
+                    : items.length
+                      ? items.length === 1
+                        ? 'Only one verified seller offer is currently available. Review its terms before adding it to cart.'
+                        : 'Open product detail for deeper inspection or add an item directly to cart.'
                     : query
                       ? 'Browse the groceries currently available or try another search.'
                       : 'Try another category or clear filters to pull more offers into view.'}
@@ -409,7 +423,7 @@ export function ResultsPage(): JSX.Element {
                     No current offer matched {filtered.unappliedPreferenceTerms.join(', ')}. Showing other offers that meet your remaining filters.
                   </p>
                 ) : null}
-                {!items.length && query ? (
+                {!items.length && query && matchKind !== 'similar' ? (
                   <Button type="button" variant="outline" className="rounded-full" onClick={() => handleSearch(category, '')}>
                     Browse available groceries
                   </Button>

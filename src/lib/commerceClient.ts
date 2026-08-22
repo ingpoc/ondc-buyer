@@ -1,5 +1,6 @@
 import type { UCPItem, UCPOrder } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
+import { throwIfSpaHtml } from './gatewayResponse';
 import { TRUST_API_URL } from './identityUrls';
 import { isLocalBrowserHost } from './loopback';
 import { sellerDisplayName } from './displayText';
@@ -117,6 +118,7 @@ async function demoFetch<T>(endpoint: string, init: RequestInit = {}): Promise<T
       ...(init.headers ?? {}),
     },
   });
+  throwIfSpaHtml(response, 'Commerce request');
   const body = (await response.json().catch(() => ({}))) as Partial<ApiEnvelope<T>>;
   if (!response.ok || body.success === false) {
     throw new Error(body.detail || body.message || `Commerce request failed (${response.status})`);
