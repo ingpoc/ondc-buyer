@@ -61,7 +61,7 @@ vi.mock('./buyerBilling', async () => {
       return {
         ok: true,
         persisted: 'local',
-        warning: 'Billing saved on this device. Gateway /api/commerce/v1/buyer returned 404.',
+        warning: 'Billing saved on this device. Gateway /api/cart/buyer/{sessionId} returned 404.',
       };
     }),
   };
@@ -457,7 +457,7 @@ describe('buyer agent tools cart path', () => {
     expect(buyer?.pincode).toBe('411001');
   });
 
-  it('fill_checkout keeps billing when CommerceV1 buyer persist 404s', async () => {
+  it('fill_checkout keeps billing when cart-session persist 404s', async () => {
     const sessionId = 'session-fill-404';
     localStorage.setItem('ondc-session-id', sessionId);
     vi.stubGlobal(

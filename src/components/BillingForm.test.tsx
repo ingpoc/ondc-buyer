@@ -10,6 +10,7 @@ function response(status: number) {
   return Promise.resolve({
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
     json: async () => ({}),
   });
 }
@@ -59,7 +60,7 @@ describe('BillingForm', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps typed values when CommerceV1 buyer persist 404s', async () => {
+  it('keeps typed values when cart-session persist 404s', async () => {
     window.localStorage.setItem('ondc-session-id', 'session-billing');
     fetchMock.mockImplementation(() => response(404));
     const onDraftChange = vi.fn();
@@ -86,8 +87,8 @@ describe('BillingForm', () => {
     expect(screen.getByLabelText('Email *')).toHaveValue('buyer@example.test');
     expect(screen.getByLabelText('Phone *')).toHaveValue('+919876543210');
     expect(getLocalSession('session-billing').buyer?.email).toBe('buyer@example.test');
-    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/api\/commerce\/v1\/buyer$/);
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/cart/buyer');
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/api\/cart\/buyer\/session-billing$/);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/commerce/v1/buyer');
 
     rerender(
       <BillingForm

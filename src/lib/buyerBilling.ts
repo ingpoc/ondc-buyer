@@ -1,18 +1,17 @@
+import { buildCommerceUrl } from './commerceConfig';
 import { throwIfSpaHtml } from './gatewayResponse';
-import { TRUST_API_URL } from './identityUrls';
 import { updateLocalBuyer } from './localCart';
 
 /**
- * Single Buyer persist contract for CommerceV1.
+ * Live Buyer persist contract from aadhaar-chain#15.
  *
- * Live 2026-08-22: `PATCH {VITE_API_BASE_URL}/api/cart/buyer/{sessionId}` 404s
- * (`https://gateway.aadharcha.in/api/cart/buyer/:id`). Gateway OpenAPI has carts,
- * lines, checkout-preview, and Razorpay — no buyer profile route yet.
+ * GET/PUT/PATCH `/api/cart/buyer/{sessionId}` → 200 draft/upsert, never 404
+ * GET/PUT/PATCH `/api/cart/buyer` → 401 JSON if session id is missing
  *
- * Buyer therefore always writes the local cart buyer first, then PUTs this path.
- * Missing/unimplemented gateway statuses are non-fatal.
+ * Do not call `/api/commerce/v1/buyer` — CommerceV1 has no buyer profile.
+ * Same-origin FQDN `/api/*` is rewritten to gateway.aadharcha.in (vercel.json).
  */
-export const COMMERCE_V1_BUYER_PATH = '/api/commerce/v1/buyer';
+export const CART_BUYER_PATH = '/api/cart/buyer';
 
 export interface BuyerBilling {
   name: string;
@@ -33,8 +32,12 @@ export function isNonFatalBuyerPersistStatus(status: number): boolean {
   return NON_FATAL_STATUS.has(status);
 }
 
-export function commerceV1BuyerUrl(): string {
-  return `${TRUST_API_URL}${COMMERCE_V1_BUYER_PATH}`;
+export function cartBuyerUrl(sessionId: string): string {
+  const id = sessionId.trim();
+  if (!id) {
+    throw new Error('No session found');
+  }
+  return buildCommerceUrl(`${CART_BUYER_PATH}/${encodeURIComponent(id)}`);
 }
 
 export function buyerPersistBody(buyer: BuyerBilling): Record<string, string> {
@@ -44,17 +47,20 @@ export function buyerPersistBody(buyer: BuyerBilling): Record<string, string> {
     phone: buyer.phone.trim(),
   };
   const taxId = buyer.taxId?.trim();
-  if (taxId) body.tax_id = taxId;
+  if (taxId) body.taxId = taxId;
   return body;
 }
 
 export function formatBuyerPersistWarning(status: number): string {
-  return `Billing saved on this device. Gateway ${COMMERCE_V1_BUYER_PATH} returned ${status}.`;
+  return `Billing saved on this device. Gateway ${CART_BUYER_PATH}/{sessionId} returned ${status}.`;
 }
 
-async function putCommerceV1Buyer(buyer: BuyerBilling): Promise<{ ok: boolean; status: number }> {
-  const response = await fetch(commerceV1BuyerUrl(), {
-    method: 'PUT',
+async function patchCartBuyer(
+  sessionId: string,
+  buyer: BuyerBilling,
+): Promise<{ ok: boolean; status: number }> {
+  const response = await fetch(cartBuyerUrl(sessionId), {
+    method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(buyerPersistBody(buyer)),
@@ -74,13 +80,13 @@ export async function persistBuyerBilling(
   updateLocalBuyer(sessionId, buyer);
 
   try {
-    const first = await putCommerceV1Buyer(buyer);
+    const first = await patchCartBuyer(sessionId, buyer);
     if (first.ok) return { ok: true, persisted: 'remote' };
     if (isNonFatalBuyerPersistStatus(first.status)) {
       return { ok: true, persisted: 'local', warning: formatBuyerPersistWarning(first.status) };
     }
     if (first.status >= 500) {
-      const retry = await putCommerceV1Buyer(buyer);
+      const retry = await patchCartBuyer(sessionId, buyer);
       if (retry.ok) return { ok: true, persisted: 'remote' };
       return {
         ok: true,

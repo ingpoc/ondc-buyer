@@ -30,8 +30,8 @@ describe('Vercel API routing', () => {
     expect(destination).not.toBe('/index.html');
     for (const path of [
       '/api/cart/buyer',
+      '/api/cart/buyer/ondc-session-verify',
       '/api/commerce/v1/payments/config',
-      '/api/commerce/v1/buyer',
       '/api/demo-commerce/buyer/search',
     ]) {
       expect(path.startsWith('/api/')).toBe(true);
