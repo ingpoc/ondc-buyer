@@ -1,3 +1,4 @@
+import { throwIfSpaHtml } from './gatewayResponse';
 import { TRUST_API_URL } from './identityUrls';
 
 export const RAZORPAY_CHECKOUT_SCRIPT_URL = 'https://checkout.razorpay.com/v1/checkout.js';
@@ -160,6 +161,7 @@ async function gatewayJson(path: string, init: RequestInit = {}): Promise<{
       ...(init.headers ?? {}),
     },
   });
+  throwIfSpaHtml(response, 'Payments config');
   const payload = await response.json().catch(() => ({}));
   return { ok: response.ok, status: response.status, payload };
 }

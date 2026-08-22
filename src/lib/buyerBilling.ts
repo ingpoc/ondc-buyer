@@ -1,3 +1,4 @@
+import { throwIfSpaHtml } from './gatewayResponse';
 import { TRUST_API_URL } from './identityUrls';
 import { updateLocalBuyer } from './localCart';
 
@@ -58,6 +59,7 @@ async function putCommerceV1Buyer(buyer: BuyerBilling): Promise<{ ok: boolean; s
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(buyerPersistBody(buyer)),
   });
+  throwIfSpaHtml(response, 'Billing persist');
   return { ok: response.ok, status: response.status };
 }
 

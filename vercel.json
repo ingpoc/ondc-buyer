@@ -17,20 +17,12 @@
       "destination": "https://gateway.aadharcha.in/ondc/np/buyer/:path*"
     },
     {
-      "source": "/api/agent/:path*",
-      "destination": "https://gateway.aadharcha.in/api/agent/:path*"
+      "source": "/api/:path*",
+      "destination": "https://gateway.aadharcha.in/api/:path*"
     },
     {
-      "source": "/api/agent",
-      "destination": "https://gateway.aadharcha.in/api/agent"
-    },
-    {
-      "source": "/api/demo-commerce/:path*",
-      "destination": "https://gateway.aadharcha.in/api/demo-commerce/:path*"
-    },
-    {
-      "source": "/api/ondc/:path*",
-      "destination": "https://gateway.aadharcha.in/api/ondc/:path*"
+      "source": "/api",
+      "destination": "https://gateway.aadharcha.in/api"
     },
     {
       "source": "/(.*)",
