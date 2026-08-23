@@ -12,8 +12,11 @@ import { syncBuyerPrincipalSession } from '@/lib/principalStorage';
 const LOCAL_IDENTITY_AUTH_ENABLED = import.meta.env.VITE_IDENTITY_AUTH_ENABLED === 'true';
 const AUDIENCE = 'ondcbuyer';
 
-function matchesAudience(user: SSOUser): boolean {
-  return user.audience === AUDIENCE || user.audience === 'buyer';
+export function matchesAudience(user: SSOUser): boolean {
+  const sharedPortfolioSession =
+    (user.identity_provider === 'auth0' || user.identity_provider === 'google') &&
+    (user.audience === 'ondcbuyer' || user.audience === 'ondcseller');
+  return user.audience === AUDIENCE || user.audience === 'buyer' || sharedPortfolioSession;
 }
 
 export type { SSOUser };

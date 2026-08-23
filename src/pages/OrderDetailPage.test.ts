@@ -7,12 +7,18 @@ import { describe, it, expect } from 'vitest';
 import type { UCPOrderStatus } from '../types';
 
 // Import the component to ensure TypeScript compilation
-import { OrderDetailPage } from './OrderDetailPage';
+import { OrderDetailPage, trackingMapUrl, trackingStatusLabel } from './OrderDetailPage';
 
 describe('OrderDetailPage (SDK-BUYER-ORDERS-003)', () => {
   it('should export OrderDetailPage component', () => {
     expect(OrderDetailPage).toBeDefined();
     expect(typeof OrderDetailPage).toBe('function');
+  });
+
+  it('labels the in-network shipment and maps GPS only when supplied', () => {
+    expect(trackingStatusLabel('shipped')).toBe('In Transit');
+    expect(trackingMapUrl('12.9716,77.5946')).toContain('12.9716%2C77.5946');
+    expect(trackingMapUrl()).toBeNull();
   });
 
   describe('Cancellable statuses', () => {

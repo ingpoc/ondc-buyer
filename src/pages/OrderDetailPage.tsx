@@ -8,9 +8,11 @@ import { fetchBuyerOrder } from '../lib/orderApi';
 import {
   createCommerceBuyerIssue,
   getCommerceOrder,
+  getCommerceOrderTrack,
   listCommerceBuyerIssues,
   listCommerceBuyerReturns,
   orderFromCommerceExecution,
+  type CommerceOrderTrack,
   type BuyerCommerceReturn,
 } from '../lib/commerceClient';
 import { executeBuyerProtectedAction, verifyBuyerReceipt } from '../lib/agentGuardCheckout';
@@ -81,6 +83,21 @@ function formatPrice(currency: string, value: string | undefined, quantity = 1) 
   return `${currency} ${(numeric * quantity).toFixed(2)}`;
 }
 
+export function trackingMapUrl(gps?: string | null): string | null {
+  const coordinates = gps?.trim();
+  return coordinates
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`
+    : null;
+}
+
+export function trackingStatusLabel(status?: string): string {
+  const normalized = status?.replace(/[_-]+/g, ' ').trim().toLowerCase();
+  if (normalized === 'shipped' || normalized === 'in transit') return 'In Transit';
+  return normalized
+    ? normalized.replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : 'Awaiting courier update';
+}
+
 export function OrderDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -98,6 +115,9 @@ export function OrderDetailPage(): JSX.Element {
   const [returning, setReturning] = useState(false);
   const [issueType, setIssueType] = useState<BuyerSupportCase['issue_type']>('fulfillment');
   const [issueDescription, setIssueDescription] = useState('');
+  const [liveTrack, setLiveTrack] = useState<CommerceOrderTrack | null>(null);
+  const [liveTrackError, setLiveTrackError] = useState<string | null>(null);
+  const [trackRefresh, setTrackRefresh] = useState(0);
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -137,6 +157,36 @@ export function OrderDetailPage(): JSX.Element {
 
     void loadOrder();
   }, [id]);
+
+  useEffect(() => {
+    if (!order?.id || !order.fulfillment?.tracking?.id) {
+      setLiveTrack(null);
+      setLiveTrackError(null);
+      return;
+    }
+
+    let active = true;
+    const refreshLiveTrack = async () => {
+      try {
+        const nextTrack = await getCommerceOrderTrack(order.id);
+        if (active) {
+          setLiveTrack(nextTrack);
+          setLiveTrackError(null);
+        }
+      } catch (err) {
+        if (active) {
+          setLiveTrackError(err instanceof Error ? err.message : 'Live tracking is unavailable.');
+        }
+      }
+    };
+
+    void refreshLiveTrack();
+    const poll = window.setInterval(refreshLiveTrack, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(poll);
+    };
+  }, [order?.fulfillment?.tracking?.id, order?.id, trackRefresh]);
 
   async function handleCancel() {
     if (!order || !id) return;
@@ -662,6 +712,51 @@ export function OrderDetailPage(): JSX.Element {
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Tracking ID</span>
                   <span className="font-mono text-xs">{order.fulfillment.tracking.id}</span>
+                </div>
+              ) : null}
+              {order.fulfillment?.tracking?.id ? (
+                <div
+                  className="space-y-3 rounded-3xl border border-border/70 bg-muted/40 px-4 py-4"
+                  data-testid="live-order-track"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">Live courier status</span>
+                    <span>{trackingStatusLabel(liveTrack?.status)}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => setTrackRefresh((current) => current + 1)}
+                    >
+                      Track shipment
+                    </Button>
+                    {trackingMapUrl(liveTrack?.tracking.location?.gps) ? (
+                      <a
+                        className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium hover:bg-background"
+                        href={trackingMapUrl(liveTrack?.tracking.location?.gps) || undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open courier map
+                      </a>
+                    ) : null}
+                  </div>
+                  {liveTrack?.tracking.location?.address ? (
+                    <p className="text-muted-foreground">
+                      {[
+                        liveTrack.tracking.location.address.city,
+                        liveTrack.tracking.location.address.area_code,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'Courier location has not been shared yet.'}
+                    </p>
+                  ) : null}
+                  {liveTrackError ? (
+                    <p className="text-muted-foreground">{liveTrackError}</p>
+                  ) : null}
                 </div>
               ) : null}
               {order.fulfillment?.tracking?.url ? (
