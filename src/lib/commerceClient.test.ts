@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createCommerceBuyerIssue,
+  getCommerceOrderTrack,
   listCommerceBuyerIssues,
   listCommerceBuyerOrders,
   listCommerceBuyerReturns,
@@ -276,7 +277,34 @@ describe('Buyer commerce read boundary', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/demo-commerce\/buyer\/orders$/),
-      expect.objectContaining({ credentials: 'include' }),
+      expect.objectContaining({ credentials: 'include' })
+    );
+  });
+});
+
+describe('Buyer live tracking read boundary', () => {
+  it('uses the gateway track route with the order id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          order_id: '5A807CE9',
+          status: 'shipped',
+          tracking: { id: 'SHIP-TEST-5A807CE9', status: 'active' },
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getCommerceOrderTrack('5A807CE9')).resolves.toMatchObject({
+      status: 'shipped',
+      tracking: { id: 'SHIP-TEST-5A807CE9' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/ondc\/track\?order_id=5A807CE9$/),
+      expect.objectContaining({ credentials: 'include' })
     );
   });
 });

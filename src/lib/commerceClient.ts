@@ -101,6 +101,24 @@ export interface BuyerCommerceReturn {
   updated_at: string;
 }
 
+export interface CommerceOrderTrack {
+  order_id: string;
+  status: string;
+  tracking: {
+    id: string;
+    url?: string;
+    status: string;
+    location?: {
+      gps?: string | null;
+      address?: {
+        city?: string;
+        area_code?: string;
+      };
+      updated_at?: string;
+    };
+  };
+}
+
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -350,25 +368,37 @@ export async function searchCommerceItems(query?: string) {
 }
 
 export async function getCommerceItem(itemId: string) {
-  const data = await demoFetch<{ item: DemoCommerceItem; inventory: number }>(`/api/demo-commerce/buyer/items/${itemId}`);
+  const data = await demoFetch<{ item: DemoCommerceItem; inventory: number }>(
+    `/api/demo-commerce/buyer/items/${itemId}`
+  );
   return mapDemoItemToBuyerItem(data.item);
 }
 
 export async function listCommerceBuyerOrders() {
-  const data = await demoFetch<{ orders: DemoCommerceOrder[]; count: number }>('/api/demo-commerce/buyer/orders');
+  const data = await demoFetch<{ orders: DemoCommerceOrder[]; count: number }>(
+    '/api/demo-commerce/buyer/orders'
+  );
   return data.orders.map(mapDemoOrderToBuyerOrder);
 }
 
 export async function getCommerceOrder(orderId: string) {
-  const data = await demoFetch<{ order: DemoCommerceOrder }>(`/api/demo-commerce/buyer/orders/${orderId}`);
+  const data = await demoFetch<{ order: DemoCommerceOrder }>(
+    `/api/demo-commerce/buyer/orders/${orderId}`
+  );
   return mapDemoOrderToBuyerOrder(data.order);
+}
+
+export async function getCommerceOrderTrack(orderId: string) {
+  return demoFetch<CommerceOrderTrack>(`/api/ondc/track?order_id=${encodeURIComponent(orderId)}`);
 }
 
 export async function listCommerceBuyerIssues(orderId?: string) {
   const params = new URLSearchParams();
   if (orderId) params.set('order_id', orderId);
   const suffix = params.toString() ? `?${params.toString()}` : '';
-  const data = await demoFetch<{ issues: DemoCommerceIssue[]; count: number }>(`/api/demo-commerce/buyer/issues${suffix}`);
+  const data = await demoFetch<{ issues: DemoCommerceIssue[]; count: number }>(
+    `/api/demo-commerce/buyer/issues${suffix}`
+  );
   return data.issues.map(mapDemoIssueToBuyerSupportCase);
 }
 
