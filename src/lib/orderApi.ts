@@ -1,4 +1,5 @@
 import { buildCommerceUrl } from './commerceConfig';
+import { listCommerceBuyerOrders } from './commerceClient';
 import type { UCPOrder } from '../types';
 
 export function normalizeOrderListResponse(payload: unknown): UCPOrder[] {
@@ -62,16 +63,10 @@ async function parseErrorResponse(response: Response, fallback: string): Promise
   return new Error(typeof error === 'string' ? error : fallback);
 }
 
-export async function fetchBuyerOrders(sessionId: string): Promise<UCPOrder[]> {
-  const response = await fetch(buildCommerceUrl(`/api/orders?sessionId=${encodeURIComponent(sessionId)}`), {
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw await parseErrorResponse(response, `Load orders failed: ${response.status}`);
-  }
-
-  return normalizeOrderListResponse(await response.json());
+export async function fetchBuyerOrders(_sessionId: string): Promise<UCPOrder[]> {
+  // Preprod has no live PSP /api/orders on buyer/gateway (404). Reuse the
+  // working demo-commerce buyer orders alias that OrdersPage already depends on.
+  return listCommerceBuyerOrders();
 }
 
 export async function fetchBuyerOrder(orderId: string): Promise<UCPOrder | null> {
