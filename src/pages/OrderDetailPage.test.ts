@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import type { UCPOrderStatus } from '../types';
 
 // Import the component to ensure TypeScript compilation
-import { OrderDetailPage, trackingMapUrl, trackingStatusLabel } from './OrderDetailPage';
+import { OrderDetailPage, orderNeedsResumePay, trackingMapUrl, trackingStatusLabel } from './OrderDetailPage';
 
 describe('OrderDetailPage (SDK-BUYER-ORDERS-003)', () => {
   it('should export OrderDetailPage component', () => {
@@ -173,5 +173,33 @@ describe('OrderDetailPage (SDK-BUYER-ORDERS-003)', () => {
       expect(cancellationFields).toContain('cancelledBy');
       expect(cancellationFields).toContain('cancelledAt');
     });
+  });
+});
+
+
+describe('orderNeedsResumePay', () => {
+  it('is true only for pending payment status', () => {
+    expect(orderNeedsResumePay(undefined)).toBe(false);
+    expect(orderNeedsResumePay(null)).toBe(false);
+    expect(
+      orderNeedsResumePay({
+        id: 'o1',
+        status: 'created',
+        createdAt: '2026-09-07T00:00:00Z',
+        updatedAt: '2026-09-07T00:00:00Z',
+        items: [],
+        payment: { type: 'PRE-FULFILLMENT', status: 'pending' },
+      } as any),
+    ).toBe(true);
+    expect(
+      orderNeedsResumePay({
+        id: 'o1',
+        status: 'created',
+        createdAt: '2026-09-07T00:00:00Z',
+        updatedAt: '2026-09-07T00:00:00Z',
+        items: [],
+        payment: { type: 'PRE-FULFILLMENT', status: 'completed' },
+      } as any),
+    ).toBe(false);
   });
 });

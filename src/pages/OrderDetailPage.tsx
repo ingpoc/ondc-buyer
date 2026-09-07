@@ -16,6 +16,10 @@ import {
   type BuyerCommerceReturn,
 } from '../lib/commerceClient';
 import { executeBuyerProtectedAction, verifyBuyerReceipt } from '../lib/agentGuardCheckout';
+import {
+  collectRazorpayTestPayment,
+  fetchRazorpaySandboxStatus,
+} from '../lib/razorpayCheckout';
 import { customerReference, intentReceiptLabel, sellerDisplayName } from '../lib/displayText';
 import type { UCPFulfillmentStatus, UCPOrder, UCPOrderStatus } from '../types';
 import type { BuyerSupportCase } from '../types/agent';
@@ -26,6 +30,11 @@ import { Spinner } from '../components/ui/spinner';
 
 const CANCELLABLE_STATUSES: UCPOrderStatus[] = ['created', 'accepted', 'in_progress'];
 const isCancellable = (status: UCPOrderStatus): boolean => CANCELLABLE_STATUSES.includes(status);
+
+export function orderNeedsResumePay(order: UCPOrder | null | undefined): boolean {
+  const status = order?.payment?.status;
+  return status === 'pending';
+}
 
 const fetchOrder = async (orderId: string): Promise<UCPOrder | null> => {
   try {
@@ -115,6 +124,8 @@ export function OrderDetailPage(): JSX.Element {
   const [returning, setReturning] = useState(false);
   const [issueType, setIssueType] = useState<BuyerSupportCase['issue_type']>('fulfillment');
   const [issueDescription, setIssueDescription] = useState('');
+  const [razorpayTestMode, setRazorpayTestMode] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [liveTrack, setLiveTrack] = useState<CommerceOrderTrack | null>(null);
   const [liveTrackError, setLiveTrackError] = useState<string | null>(null);
   const [trackRefresh, setTrackRefresh] = useState(0);
@@ -187,6 +198,40 @@ export function OrderDetailPage(): JSX.Element {
       window.clearInterval(poll);
     };
   }, [order?.fulfillment?.tracking?.id, order?.id, trackRefresh]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRazorpaySandboxStatus().then((status) => {
+      if (!cancelled) setRazorpayTestMode(status.configured);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+
+  async function handleResumePay() {
+    if (!order || !id || paying) return;
+    setPaying(true);
+    setError(null);
+    try {
+      await collectRazorpayTestPayment({
+        commerceOrderId: order.id,
+        prefill: {
+          name: order.deliveryAddress?.name,
+          contact: order.deliveryAddress?.phone,
+        },
+      });
+      const data = await fetchOrder(id);
+      if (!data) throw new Error('Order not found after payment');
+      setOrder(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Payment failed');
+    } finally {
+      setPaying(false);
+    }
+  }
 
   async function handleCancel() {
     if (!order || !id) return;
@@ -365,14 +410,14 @@ export function OrderDetailPage(): JSX.Element {
               data-testid={`order-payment-${order.payment.status}`}
             >
               {order.payment.status === 'PAID' || order.payment.status === 'completed'
-                ? 'Simulated payment succeeded'
+                ? (razorpayTestMode ? 'Payment succeeded' : 'Simulated payment succeeded')
                 : order.payment.status === 'reconciled'
-                  ? 'Simulated payment reconciled'
+                  ? (razorpayTestMode ? 'Payment reconciled' : 'Simulated payment reconciled')
                   : order.payment.status === 'failed'
-                    ? 'Simulated payment failed'
+                    ? (razorpayTestMode ? 'Payment failed' : 'Simulated payment failed')
                     : order.payment.status === 'unknown'
-                      ? 'Simulated payment status unknown'
-                      : 'Simulated payment pending'}
+                      ? (razorpayTestMode ? 'Payment status unknown' : 'Simulated payment status unknown')
+                      : (razorpayTestMode ? 'Payment pending' : 'Simulated payment pending')}
             </Badge>
           ) : null}
           {order.payment?.transactionId ? (
@@ -380,6 +425,19 @@ export function OrderDetailPage(): JSX.Element {
               Payment reference {customerReference(order.payment.transactionId)}
             </Badge>
           ) : null}
+
+          {orderNeedsResumePay(order) && razorpayTestMode ? (
+            <Button
+              type="button"
+              className="rounded-full"
+              onClick={() => void handleResumePay()}
+              disabled={paying}
+              data-testid="order-resume-pay"
+            >
+              {paying ? 'Opening Razorpay Test Mode...' : 'Pay with Razorpay Test Mode'}
+            </Button>
+          ) : null}
+
           {canCancel ? (
             <Button
               type="button"
