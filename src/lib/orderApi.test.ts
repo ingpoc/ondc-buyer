@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UCPOrder } from '../types';
-import { normalizeOrderListResponse, normalizeOrderResponse } from './orderApi';
+import { fetchBuyerOrders, normalizeOrderListResponse, normalizeOrderResponse } from './orderApi';
 
 const order = {
   id: 'order-1',
@@ -30,5 +30,28 @@ describe('order API response normalization', () => {
   it('returns null for malformed order detail responses', () => {
     expect(normalizeOrderResponse(null)).toBeNull();
     expect(normalizeOrderResponse({ data: [] })).toBeNull();
+  });
+});
+
+describe('fetchBuyerOrders', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('routes the list through demo-commerce instead of dead /api/orders', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ success: true, data: { orders: [], count: 0 } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchBuyerOrders('session-1')).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toMatch(/\/api\/demo-commerce\/buyer\/orders$/);
+    expect(url).not.toMatch(/\/api\/orders(\?|$)/);
   });
 });
