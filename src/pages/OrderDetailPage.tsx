@@ -214,7 +214,7 @@ export function OrderDetailPage(): JSX.Element {
   async function handleResumePay() {
     if (!order || !id || paying) return;
     setPaying(true);
-    setActionError(null);
+    setError(null);
     try {
       await collectRazorpayTestPayment({
         commerceOrderId: order.id,
@@ -227,7 +227,7 @@ export function OrderDetailPage(): JSX.Element {
       if (!data) throw new Error('Order not found after payment');
       setOrder(data);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Payment failed');
+      setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {
       setPaying(false);
     }
