@@ -44,6 +44,12 @@ describe('Buyer header disclosure helpers', () => {
       secondary: 'buyer@example.test',
     });
     expect(buyerAccountIdentity(null)).toEqual({ primary: 'Signed in' });
+    expect(
+      buyerAccountIdentity({
+        display_name: 'principal:auth0:google-oauth2:fixture',
+        email: 'buyer@example.test',
+      }),
+    ).toEqual({ primary: 'buyer@example.test' });
   });
 
   it('exposes loading trust copy without marking it healthy', () => {

@@ -346,11 +346,17 @@ export function BuyerConfigPage() {
     setTab(tab);
   }
 
+  const displayName =
+    typeof user?.display_name === 'string' &&
+    user.display_name &&
+    !user.display_name.startsWith('principal:') &&
+    !user.display_name.startsWith('wallet:')
+      ? user.display_name
+      : '';
   const principalLabel =
-    (typeof user?.display_name === 'string' && user.display_name) ||
+    displayName ||
     (typeof user?.email === 'string' && user.email) ||
-    subjectId ||
-    'Not signed in';
+    (subjectId ? 'Signed in' : 'Not signed in');
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4" data-testid="buyer-config-page">

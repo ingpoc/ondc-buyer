@@ -37,8 +37,14 @@ export function buyerAccountIdentity(user: SSOUser | null | undefined): {
   primary: string;
   secondary?: string;
 } {
-  const name = user?.display_name?.trim() || '';
+  // Auth session only — never wallet KYC (/api/identity/{wallet}).
+  const rawName = user?.display_name?.trim() || '';
   const email = user?.email?.trim() || '';
+  // Ignore opaque principal ids if a client ever mirrored them into display_name.
+  const name =
+    rawName && !rawName.startsWith('principal:') && !rawName.startsWith('wallet:')
+      ? rawName
+      : '';
   if (name && email && name !== email) return { primary: name, secondary: email };
   if (name) return { primary: name };
   if (email) return { primary: email };
@@ -357,10 +363,11 @@ function AccountMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={panelId}
+        aria-label={`Account menu for ${identity.primary}`}
         onClick={() => onOpenChange(!open)}
       >
         <UserRound className="size-4" aria-hidden />
-        <span>Account</span>
+        <span className="max-w-[10rem] truncate">{identity.primary}</span>
         <ChevronDown
           className={cn('size-3.5 opacity-70 transition', open && 'rotate-180')}
           aria-hidden
