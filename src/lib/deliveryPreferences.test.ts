@@ -15,6 +15,7 @@ describe('saved delivery area', () => {
     ).toBe('Pune, Maharashtra, 411001');
 
     saveDeliveryAreaFromAddress('principal:buyer:a', {
+      line1: '12 Preprod Test Lane',
       city: 'Pune',
       state: 'Maharashtra',
       postalCode: '411001',
@@ -22,6 +23,7 @@ describe('saved delivery area', () => {
 
     expect(loadSavedDeliveryArea('principal:buyer:a')).toMatchObject({
       label: 'Pune, Maharashtra, 411001',
+      street: '12 Preprod Test Lane',
       city: 'Pune',
       state: 'Maharashtra',
       postalCode: '411001',

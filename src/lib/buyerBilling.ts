@@ -18,6 +18,14 @@ export interface BuyerBilling {
   email: string;
   phone: string;
   taxId?: string;
+  /** Optional delivery fields accepted by gateway cart-session buyer upsert. */
+  street?: string;
+  line1?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  pincode?: string;
+  country?: string;
 }
 
 export interface PersistBuyerBillingResult {
@@ -48,6 +56,22 @@ export function buyerPersistBody(buyer: BuyerBilling): Record<string, string> {
   };
   const taxId = buyer.taxId?.trim();
   if (taxId) body.taxId = taxId;
+  const street = (buyer.line1 || buyer.street || "").trim();
+  if (street) {
+    body.street = street;
+    body.line1 = street;
+  }
+  const city = buyer.city?.trim();
+  if (city) body.city = city;
+  const state = buyer.state?.trim();
+  if (state) body.state = state;
+  const pin = (buyer.postalCode || buyer.pincode || "").trim();
+  if (pin) {
+    body.pincode = pin;
+    body.postalCode = pin;
+  }
+  const country = buyer.country?.trim();
+  if (country) body.country = country;
   return body;
 }
 

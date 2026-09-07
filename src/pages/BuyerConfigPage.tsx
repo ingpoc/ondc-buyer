@@ -144,7 +144,7 @@ export function BuyerConfigPage() {
     setProfileEmail(buyer?.email || '');
     setProfilePhone(buyer?.phone || '');
     setProfileTaxId(buyer?.taxId || '');
-    setProfileLine1(buyer?.street || '');
+    setProfileLine1(buyer?.street || savedArea?.street || '');
     setProfileCity(buyer?.city || savedArea?.city || '');
     setProfileState(buyer?.state || savedArea?.state || '');
     setProfilePin(buyer?.pincode || savedArea?.postalCode || '');
@@ -282,24 +282,37 @@ export function BuyerConfigPage() {
     setProfileSaving(true);
     setProfileNote(null);
     try {
+      if (profileLine1.trim() || profileCity.trim() || profileState.trim() || profilePin.trim()) {
+        if (!profileLine1.trim() || !profileCity.trim() || !profileState.trim() || !profilePin.trim()) {
+          throw new Error('Delivery needs street, city, state, and PIN together.');
+        }
+      }
+      const address = profileLine1.trim()
+        ? {
+            line1: profileLine1.trim(),
+            city: profileCity.trim(),
+            state: profileState.trim(),
+            postalCode: profilePin.trim(),
+            country: 'IND',
+          }
+        : null;
       const billing = {
         name: profileName.trim(),
         email: profileEmail.trim(),
         phone: profilePhone.trim(),
         taxId: profileTaxId.trim().toUpperCase() || undefined,
+        ...(address
+          ? {
+              line1: address.line1,
+              city: address.city,
+              state: address.state,
+              postalCode: address.postalCode,
+              country: address.country,
+            }
+          : {}),
       };
       const persist = await persistBuyerBilling(sessionId, billing);
-      if (profileLine1.trim() || profileCity.trim() || profileState.trim() || profilePin.trim()) {
-        if (!profileLine1.trim() || !profileCity.trim() || !profileState.trim() || !profilePin.trim()) {
-          throw new Error('Delivery needs street, city, state, and PIN together.');
-        }
-        const address = {
-          line1: profileLine1.trim(),
-          city: profileCity.trim(),
-          state: profileState.trim(),
-          postalCode: profilePin.trim(),
-          country: 'IND',
-        };
+      if (address) {
         updateLocalDeliveryAddress(sessionId, address);
         saveDeliveryAreaFromAddress(subjectId, address);
       }

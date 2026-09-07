@@ -96,4 +96,30 @@ describe('cart-session buyer persist', () => {
     expect(result.persisted).toBe('local');
     expect(getLocalSession('session-503').buyer?.name).toBe(buyer.name);
   });
+
+  it('includes street and pin when provided for cart-session buyer upsert', () => {
+    expect(
+      buyerPersistBody({
+        ...buyer,
+        line1: '12 Preprod Test Lane',
+        city: 'Pune',
+        state: 'Maharashtra',
+        postalCode: '411001',
+        country: 'IND',
+      }),
+    ).toMatchObject({
+      name: buyer.name,
+      email: buyer.email,
+      phone: buyer.phone,
+      taxId: buyer.taxId,
+      street: '12 Preprod Test Lane',
+      line1: '12 Preprod Test Lane',
+      city: 'Pune',
+      state: 'Maharashtra',
+      pincode: '411001',
+      postalCode: '411001',
+      country: 'IND',
+    });
+  });
+
 });
