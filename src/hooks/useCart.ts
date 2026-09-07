@@ -80,7 +80,8 @@ function localCartStoreActive(): boolean {
 
 export function useCart(): UseCartResult {
   const [session, setSession] = useState<UCPSession | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Start true: mount always refreshes. False+empty on first paint made CheckoutPage bounce to /cart.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const sessionId = getSessionId();
 

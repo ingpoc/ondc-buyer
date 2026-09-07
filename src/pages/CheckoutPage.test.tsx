@@ -241,5 +241,14 @@ describe('checkout empty-cart redirect', () => {
         hadItems: false,
       }),
     ).toBe(true);
+    expect(
+      shouldRedirectEmptyCheckout({
+        authenticated: true,
+        holdingDecision: false,
+        loading: true,
+        itemCount: 0,
+        hadItems: false,
+      }),
+    ).toBe(false);
   });
 });

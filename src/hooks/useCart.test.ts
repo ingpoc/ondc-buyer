@@ -23,6 +23,30 @@ describe('useCart guest add', () => {
     vi.unstubAllGlobals();
   });
 
+  it('starts loading until the first refresh settles', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            session: {
+              id: 'session-remote',
+              status: 'active',
+              createdAt: '2026-08-19T10:00:00Z',
+              updatedAt: '2026-08-19T10:00:00Z',
+              items: [],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    const { result } = renderHook(() => useCart());
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  });
+
   it('does not silently drop a guest add when the remote cart returns an empty session', async () => {
     vi.stubGlobal(
       'fetch',
