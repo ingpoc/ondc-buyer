@@ -1,4 +1,5 @@
 import { Minus, Plus, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
@@ -116,13 +117,26 @@ export function CartSummary({
             {currency} {subtotal.toFixed(2)}
           </span>
         </div>
+        {/* Real Link href so CDP/agent clicks navigate even when React onClick is a no-op. */}
         <Button
-          type="button"
-          onClick={onCheckout}
-          disabled={checkoutDisabled}
+          asChild
           className="w-full rounded-full"
+          aria-disabled={checkoutDisabled || undefined}
         >
-          Proceed to checkout
+          <Link
+            to="/checkout"
+            onClick={(event) => {
+              if (checkoutDisabled) {
+                event.preventDefault();
+                return;
+              }
+              onCheckout();
+            }}
+            className={checkoutDisabled ? 'pointer-events-none opacity-50' : undefined}
+            tabIndex={checkoutDisabled ? -1 : undefined}
+          >
+            Proceed to checkout
+          </Link>
         </Button>
       </CardContent>
     </Card>
