@@ -2,6 +2,7 @@ import type { UCPAddress } from '../types';
 
 export interface SavedDeliveryArea {
   label: string;
+  street?: string;
   city?: string;
   state?: string;
   postalCode?: string;
@@ -30,6 +31,7 @@ export function loadSavedDeliveryArea(
     if (!parsed?.label || typeof parsed.label !== 'string') return null;
     return {
       label: parsed.label.trim(),
+      street: typeof parsed.street === 'string' ? parsed.street : undefined,
       city: typeof parsed.city === 'string' ? parsed.city : undefined,
       state: typeof parsed.state === 'string' ? parsed.state : undefined,
       postalCode: typeof parsed.postalCode === 'string' ? parsed.postalCode : undefined,
@@ -49,6 +51,7 @@ export function saveDeliveryAreaFromAddress(
   if (!label) return null;
   const saved: SavedDeliveryArea = {
     label,
+    street: String(address.line1 || address.street || '').trim() || undefined,
     city: String(address.city || '').trim() || undefined,
     state: String(address.state || '').trim() || undefined,
     postalCode: String(address.postalCode || address.pincode || '').trim() || undefined,
@@ -70,6 +73,7 @@ export function saveDeliveryAreaLabel(
   const sameLabel = current?.label === trimmed;
   const saved: SavedDeliveryArea = {
     label: trimmed,
+    street: sameLabel ? current?.street : undefined,
     city: sameLabel ? current?.city : (!isPostalCode && !trimmed.includes(',') ? trimmed : undefined),
     state: sameLabel ? current?.state : undefined,
     postalCode: sameLabel ? current?.postalCode : (isPostalCode ? trimmed : undefined),

@@ -35,6 +35,7 @@ import {
 } from '../lib/checkoutOutcome';
 import { recordPurchasePreference } from '../lib/samanthaMemory';
 import { loadSavedDeliveryArea, saveDeliveryAreaFromAddress } from '../lib/deliveryPreferences';
+import { persistBuyerBilling } from '../lib/buyerBilling';
 import {
   CHECKOUT_PREFILL_EVENT,
   type CheckoutPrefillDetail,
@@ -475,7 +476,7 @@ export function CheckoutPage() {
     hydratedDeliverySession.current = session.id;
     const savedArea = loadSavedDeliveryArea(subjectId || principalId);
     setDeliveryAddress({
-      line1: session.buyer?.street || '',
+      line1: session.buyer?.street || savedArea?.street || '',
       city: session.buyer?.city || savedArea?.city || '',
       state: collapseDuplicatedRegion(session.buyer?.state || savedArea?.state || ''),
       postalCode: session.buyer?.pincode || savedArea?.postalCode || '',
@@ -496,8 +497,27 @@ export function CheckoutPage() {
     };
     saveDeliveryAreaFromAddress(subjectId || principalId, next);
     const sessionId = localStorage.getItem('ondc-session-id');
-    if (sessionId) updateLocalDeliveryAddress(sessionId, next);
-  }, [principalId, subjectId]);
+    if (!sessionId) return;
+    updateLocalDeliveryAddress(sessionId, next);
+    const buyer = session?.buyer;
+    const name = (buyer?.name || '').trim();
+    const email = (buyer?.contact?.email || buyer?.email || '').trim();
+    const phone = (buyer?.contact?.phone || buyer?.phone || '').trim();
+    // Remote upsert is best-effort; local street already saved for return visits.
+    if (name && email && phone) {
+      void persistBuyerBilling(sessionId, {
+        name,
+        email,
+        phone,
+        taxId: buyer?.taxId,
+        line1: next.line1 || next.street || '',
+        city: next.city || '',
+        state: next.state || '',
+        postalCode: next.postalCode || next.pincode || '',
+        country: next.country || 'IND',
+      });
+    }
+  }, [principalId, session?.buyer, subjectId]);
 
   const handleDeliveryAddressChange = useCallback((address: UCPAddress) => {
     setDeliveryAddress({

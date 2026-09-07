@@ -89,9 +89,21 @@ export function updateLocalBuyer(
     email: string;
     phone: string;
     taxId?: string;
+    street?: string;
+    line1?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    pincode?: string;
+    country?: string;
   }
 ): UCPSession {
   const session = getLocalSession(sessionId);
+  const street = (buyer.line1 || buyer.street || "").trim();
+  const city = buyer.city?.trim();
+  const state = buyer.state?.trim();
+  const pin = (buyer.postalCode || buyer.pincode || "").trim();
+  const country = buyer.country?.trim();
   return saveLocalSession({
     ...session,
     buyer: {
@@ -100,6 +112,11 @@ export function updateLocalBuyer(
       email: buyer.email,
       phone: buyer.phone,
       taxId: buyer.taxId?.trim() || undefined,
+      ...(street ? { street } : {}),
+      ...(city ? { city } : {}),
+      ...(state ? { state } : {}),
+      ...(pin ? { pincode: pin } : {}),
+      ...(country ? { country } : {}),
       contact: {
         email: buyer.email,
         phone: buyer.phone,

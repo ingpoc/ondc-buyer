@@ -44,7 +44,8 @@ const BUYER_ORB_INSTRUCTIONS =
   'If search_catalog reports can_assert_empty=true, count 0, or the page shows 0 matches: say honestly none were found. Do not invent SKUs or promise offers are still loading. ' +
   'Checkout or pay (only after an explicit pay / place order / checkout / commit request): call checkout_commit (host fills cart total and session_id). Report AgentGuard allow / need_approval / deny honestly. ' +
   'If they ask to fill details, prefill, or enter address/name/phone/email: call fill_checkout with the fields they gave (host fills session_id) and open /checkout — do NOT call checkout_commit until they explicitly ask to place/pay. ' +
-  'Never ask for session ID, cart total, or amount_inr. ' +
+  'If they ask the cart total / how much is in the cart, answer from Host cart_subtotal_inr and live_cart line totals — never invent an amount; navigate_to /cart if they want to see it. ' +
+  'Never ask the user for session ID, cart total, or amount_inr. ' +
   'Chain short tools in one turn when needed. Continue after each function_call_output until the short request is done. ' +
   'If the user asks for cart/checkout/orders while a search is running, call navigate_to and STOP — do not retry search_catalog after a timeout or navSuperseded. ' +
   'Long planning (weekly plan, budget, research): call delegate_to_runtime_agent once; say you started and will update them — never mention Cursor or /agent. ' +
@@ -59,12 +60,49 @@ function looksLikeCatalogFind(text: string): boolean {
   return Boolean(q) && q !== 'grocery';
 }
 
+export type HostCartLine = {
+  itemId: string;
+  name: string;
+  quantity: number;
+  price_inr?: number;
+  line_total_inr?: number;
+};
+
+/** Compact cart summary for Samantha Host context (answers “what is my cart total?”). */
+export function buildHostCartSummary(
+  cartItems: HostCartLine[],
+  cartSubtotalInr: number,
+): { live_cart: HostCartLine[]; cart_subtotal_inr: number } {
+  const live_cart = cartItems.map((line) => {
+    const qty = Number(line.quantity) || 0;
+    const unit = line.price_inr != null ? Number(line.price_inr) : undefined;
+    const lineTotal =
+      line.line_total_inr != null
+        ? Number(line.line_total_inr)
+        : unit != null
+          ? Number((unit * qty).toFixed(2))
+          : undefined;
+    return {
+      itemId: line.itemId,
+      name: line.name,
+      quantity: qty,
+      ...(unit != null && !Number.isNaN(unit) ? { price_inr: unit } : {}),
+      ...(lineTotal != null && !Number.isNaN(lineTotal) ? { line_total_inr: lineTotal } : {}),
+    };
+  });
+  return {
+    live_cart,
+    cart_subtotal_inr: Number(Number(cartSubtotalInr || 0).toFixed(2)),
+  };
+}
+
 function buildOutboundUserText(
   userText: string,
   host: {
     pathname: string;
     search?: string;
-    cartItems: Array<{ itemId: string; name: string; quantity: number }>;
+    cartItems: HostCartLine[];
+    cartSubtotalInr: number;
   },
 ): string {
   const params = new URLSearchParams(host.search || '');
@@ -80,15 +118,18 @@ function buildOutboundUserText(
     name: item.name || item.descriptor?.name || item.id,
     price_inr: item.price?.value,
   }));
+  const cartSummary = buildHostCartSummary(host.cartItems, host.cartSubtotalInr);
   return (
     `${userText}\n\n` +
     `[Host context — authoritative app state, not typed by the user: ${JSON.stringify({
       current_page: host.pathname,
       current_query: currentQuery || null,
       visible_results: cached,
-      live_cart: host.cartItems,
+      live_cart: cartSummary.live_cart,
+      cart_subtotal_inr: cartSummary.cart_subtotal_inr,
     })}. ` +
     'visible_results are only for current_query. If the user asks for a different product, call search_catalog. ' +
+    'cart_subtotal_inr is the on-screen cart total in INR — use it for cart-total questions. ' +
     'Use this state to resolve phrases such as “what I see”, “that one”, “my cart”, “remove it”, and “make it two”.]'
   );
 }
@@ -779,11 +820,19 @@ export function SamanthaOrb() {
                       text: buildOutboundUserText(pending, {
                         pathname: locationRef.current.pathname,
                         search: locationRef.current.search,
-                        cartItems: (session?.items ?? []).map((entry) => ({
+                        cartItems: (session?.items ?? []).map((entry) => {
+                        const raw = entry.item.price?.value;
+                        const unit = typeof raw === 'string' ? parseFloat(raw) : Number(raw ?? 0);
+                        const price = Number.isFinite(unit) ? unit : undefined;
+                        return {
                           itemId: entry.item.id,
                           name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
                           quantity: entry.quantity,
-                        })),
+                          price_inr: price,
+                          line_total_inr: price != null ? Number((price * entry.quantity).toFixed(2)) : undefined,
+                        };
+                      }),
+                      cartSubtotalInr: Number(subtotal) || 0,
                       }),
                     },
                   ],
@@ -1101,11 +1150,19 @@ export function SamanthaOrb() {
               text: buildOutboundUserText(text, {
                 pathname: locationRef.current.pathname,
                 search: locationRef.current.search,
-                cartItems: (session?.items ?? []).map((entry) => ({
+                cartItems: (session?.items ?? []).map((entry) => {
+                const raw = entry.item.price?.value;
+                const unit = typeof raw === 'string' ? parseFloat(raw) : Number(raw ?? 0);
+                const price = Number.isFinite(unit) ? unit : undefined;
+                return {
                   itemId: entry.item.id,
                   name: entry.item.name || entry.item.descriptor?.name || entry.item.id,
                   quantity: entry.quantity,
-                })),
+                  price_inr: price,
+                  line_total_inr: price != null ? Number((price * entry.quantity).toFixed(2)) : undefined,
+                };
+              }),
+              cartSubtotalInr: Number(subtotal) || 0,
               }),
             },
           ],
